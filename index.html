@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Тренажер Госов | АПИб-22</title>
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="styles.css">
+  <!-- MathJax for rendering LaTeX formulas -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        ignoreHtmlClass: 'tex2jax_ignore',
+        processHtmlClass: 'tex2jax_process'
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+  <!-- Background Glow FX -->
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+
+  <!-- Main App Wrapper -->
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-icon">⚡</span>
+        <div>
+          <h1>Тренажер Госов</h1>
+          <p>Направление: АПИб-22 (Лето 2026)</p>
+        </div>
+      </div>
+      <div class="header-controls">
+        <button id="sound-toggle" class="icon-btn" title="Вкл/Выкл звук">
+          <span class="btn-icon">🔊</span>
+        </button>
+        <button id="theme-toggle" class="icon-btn" title="Сменить тему">
+          <span class="btn-icon">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Start / Welcome Screen -->
+    <section id="start-screen" class="glass-card active fade-in">
+      <div class="hero-content">
+        <span class="hero-badge">Государственный экзамен</span>
+        <h2>Проверь свои знания перед сдачей</h2>
+        <p>Интерактивный тренажер, содержащий 49 вопросов с подробными ответами и пошаговыми решениями практических задач по информационной безопасности, базам данных, системному моделированию и искусственному интеллекту.</p>
+      </div>
+
+      <div class="settings-grid">
+        <!-- Mode Select -->
+        <div class="setting-card">
+          <h3>Режим тестирования</h3>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="quiz-mode" value="training" checked>
+              <span class="radio-custom"></span>
+              <div>
+                <strong>Тренировка</strong>
+                <span>Ответы проверяются мгновенно, показываются подробные объяснения и формулы.</span>
+              </div>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="quiz-mode" value="exam">
+              <span class="radio-custom"></span>
+              <div>
+                <strong>Экзамен</strong>
+                <span>Время ограничено (25 минут), результаты и разбор ошибок только в конце.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Category Select -->
+        <div class="setting-card">
+          <h3>Разделы вопросов</h3>
+          <div class="filter-buttons">
+            <button class="filter-btn active" data-category="all">Все разделы (49)</button>
+            <button class="filter-btn" data-category="general">Общие ИТ/ИБ темы (25)</button>
+            <button class="filter-btn" data-category="ai">Искусственный интеллект (17)</button>
+            <button class="filter-btn" data-category="practical">Практические задачи (7)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="action-bar">
+        <button id="start-quiz-btn" class="btn primary-btn large-btn">Начать тестирование</button>
+      </div>
+    </section>
+
+    <!-- Quiz Screen -->
+    <section id="quiz-screen" class="glass-card">
+      <div class="quiz-metadata">
+        <div class="quiz-info-left">
+          <span class="badge" id="category-badge">Общие ИТ/ИБ</span>
+          <span class="question-counter">Вопрос <strong id="current-q-num">1</strong> из <strong id="total-q-num">49</strong></span>
+        </div>
+        <div class="quiz-info-right">
+          <div id="exam-timer" class="timer-display hidden">
+            <span class="timer-icon">⏱️</span>
+            <span id="time-left">25:00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="progress-bar-container">
+        <div id="quiz-progress" class="progress-bar-fill" style="width: 2%"></div>
+      </div>
+
+      <!-- Question Text -->
+      <div class="question-container">
+        <h2 id="question-text">Текст вопроса</h2>
+      </div>
+
+      <!-- Options Grid -->
+      <div id="options-grid" class="options-grid">
+        <!-- Dynamic Options buttons will render here -->
+      </div>
+
+      <!-- Explanation & Feedback (Visible in Training mode after answering) -->
+      <div id="explanation-box" class="explanation-box hidden">
+        <div class="feedback-indicator">
+          <span id="feedback-icon">✓</span>
+          <h4 id="feedback-text">Правильно!</h4>
+        </div>
+        <div class="explanation-content">
+          <p id="explanation-text">Пояснения к вопросу...</p>
+        </div>
+      </div>
+
+      <!-- Navigation Footer -->
+      <div class="quiz-footer">
+        <button id="quit-quiz-btn" class="btn secondary-btn">Прервать тест</button>
+        <button id="next-q-btn" class="btn primary-btn hidden">Дальше</button>
+      </div>
+    </section>
+
+    <!-- Results Screen -->
+    <section id="results-screen" class="glass-card">
+      <div class="results-header">
+        <span class="hero-badge">Результаты</span>
+        <h2>Тестирование завершено!</h2>
+      </div>
+
+      <!-- Result Stats Container -->
+      <div class="results-summary-grid">
+        <!-- Radial Score -->
+        <div class="score-radial-card">
+          <div class="radial-progress">
+            <svg class="radial-svg" viewBox="0 0 120 120">
+              <circle class="radial-bg" cx="60" cy="60" r="50" />
+              <circle id="radial-bar" class="radial-bar" cx="60" cy="60" r="50" />
+            </svg>
+            <div class="radial-value">
+              <span id="score-percent">0%</span>
+              <span class="radial-label" id="score-fraction">0 / 0</span>
+            </div>
+          </div>
+          <p class="score-verdict" id="score-verdict">Отличный результат!</p>
+        </div>
+
+        <!-- Stats List -->
+        <div class="stats-list-card">
+          <div class="stat-item">
+            <span class="stat-label">Режим</span>
+            <span class="stat-val" id="result-mode">Тренировка</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Раздел</span>
+            <span class="stat-val" id="result-category">Все разделы</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Затраченное время</span>
+            <span class="stat-val" id="result-time">00:00</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Правильных ответов</span>
+            <span class="stat-val correct-color" id="result-correct">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Неправильных ответов</span>
+            <span class="stat-val wrong-color" id="result-wrong">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review Section -->
+      <div class="review-section">
+        <h3>Детальный анализ ответов</h3>
+        <div id="wrong-answers-list" class="wrong-answers-list">
+          <!-- Dynamic wrong answers list -->
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="action-bar">
+        <button id="restart-quiz-btn" class="btn primary-btn large-btn">Пройти еще раз</button>
+        <button id="home-btn" class="btn secondary-btn large-btn">На главную</button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Custom Confirm Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card active">
+      <h3>Прервать тестирование?</h3>
+      <p>Вы действительно хотите завершить тестирование? Ваши текущие результаты не будут сохранены.</p>
+      <div class="modal-buttons">
+        <button id="confirm-cancel-btn" class="btn secondary-btn">Отмена</button>
+        <button id="confirm-ok-btn" class="btn primary-btn">Прервать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="questions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
