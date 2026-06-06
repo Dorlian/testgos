@@ -54,6 +54,7 @@
       </div>
     </header>
 
+
     <!-- Start / Welcome Screen -->
     <section id="start-screen" class="glass-card active fade-in">
       <div class="hero-content">
@@ -83,6 +84,14 @@
                 <span>Время ограничено (25 минут), результаты и разбор ошибок только в конце.</span>
               </div>
             </label>
+            <label class="radio-label">
+              <input type="radio" name="quiz-mode" value="ai">
+              <span class="radio-custom"></span>
+              <div>
+                <strong>Устный ответ (Проверка ИИ)</strong>
+                <span>Вы пишите ответ текстом, а искусственный интеллект оценивает его и указывает на ошибки.</span>
+              </div>
+            </label>
           </div>
         </div>
 
@@ -98,8 +107,9 @@
         </div>
       </div>
 
-      <div class="action-bar">
+      <div class="action-bar" style="justify-content: center; gap: 15px; flex-wrap: wrap;">
         <button id="start-quiz-btn" class="btn primary-btn large-btn">Начать тестирование</button>
+        <button id="study-mode-btn" class="btn secondary-btn large-btn">🎓 Обучение (Все ответы)</button>
       </div>
     </section>
 
@@ -133,6 +143,55 @@
         <!-- Dynamic Options buttons will render here -->
       </div>
 
+      <!-- Textarea for AI Oral Exam Mode (Initially hidden) -->
+      <div id="ai-write-container" class="ai-write-container hidden">
+        <textarea id="ai-user-answer" placeholder="Напишите ваш подробный ответ на вопрос..."></textarea>
+        <div class="ai-action-bar">
+          <button id="ai-check-btn" class="btn primary-btn">Отправить на проверку ИИ ⚡</button>
+        </div>
+      </div>
+
+      <!-- AI Evaluation Loading Box (Initially hidden) -->
+      <div id="ai-loading-box" class="ai-loading-box hidden">
+        <div class="spinner-orb"></div>
+        <p>ИИ-экзаменатор анализирует ваш ответ...</p>
+      </div>
+
+      <!-- AI Result Feedback Box (Initially hidden) -->
+      <div id="ai-result-box" class="ai-result-box hidden">
+        <div class="ai-score-row">
+          <div class="ai-score-badge">
+            <span class="ai-score-label">Оценка ИИ</span>
+            <span id="ai-score-value">0%</span>
+          </div>
+          <div class="ai-verdict-badge" id="ai-verdict-badge">Зачтено</div>
+        </div>
+        
+        <div class="ai-result-details">
+          <div class="ai-detail-section correct-section">
+            <h5>✓ Что отвечено правильно:</h5>
+            <p id="ai-correct-text">Описание...</p>
+          </div>
+          <div class="ai-detail-section missing-section">
+            <h5>✗ Что упущено или требует доработки:</h5>
+            <p id="ai-missing-text">Описание...</p>
+          </div>
+          <div class="ai-detail-section comment-section">
+            <h5>💬 Комментарий экзаменатора:</h5>
+            <p id="ai-comment-text">Комментарий...</p>
+          </div>
+        </div>
+
+        <div class="ai-result-actions" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; width: 100%;">
+          <button id="toggle-academic-btn" class="btn secondary-btn small-btn">Показать эталонный ответ</button>
+          <button id="override-correct-btn" class="btn secondary-btn small-btn hidden">✓ Засчитать как правильный</button>
+        </div>
+        <div id="academic-answer-box" class="academic-answer-box hidden">
+          <h5>📚 Эталонный академический ответ:</h5>
+          <p id="academic-answer-text">Текст ответа...</p>
+        </div>
+      </div>
+
       <!-- Explanation & Feedback (Visible in Training mode after answering) -->
       <div id="explanation-box" class="explanation-box hidden">
         <div class="feedback-indicator">
@@ -141,6 +200,25 @@
         </div>
         <div class="explanation-content">
           <p id="explanation-text">Пояснения к вопросу...</p>
+        </div>
+      </div>
+
+      <!-- Ask AI panel (shown after answering in any quiz mode) -->
+      <div id="quiz-ask-ai-panel" class="quiz-ask-ai-panel hidden">
+        <button id="quiz-ask-ai-toggle" class="quiz-ask-ai-toggle">
+          <span>🤖 Спросить ИИ про этот вопрос</span>
+          <span id="quiz-ask-ai-arrow" class="ask-ai-arrow">▸</span>
+        </button>
+        <div id="quiz-ask-ai-body" class="quiz-ask-ai-body collapsed">
+          <div class="quiz-ai-input-row">
+            <input id="quiz-ai-input" type="text" class="quiz-ai-input"
+              placeholder="Задайте вопрос ИИ по данной теме..." />
+            <button id="quiz-ai-send-btn" class="btn primary-btn quiz-ai-send-btn">Спросить</button>
+          </div>
+          <div id="quiz-ai-loading" class="study-ai-loading hidden">
+            <span class="study-ai-spinner"></span> ИИ думает...
+          </div>
+          <div id="quiz-ai-response" class="quiz-ai-response hidden"></div>
         </div>
       </div>
 
@@ -210,8 +288,41 @@
 
       <!-- Controls -->
       <div class="action-bar">
+        <button id="retry-failed-btn" class="btn secondary-btn large-btn hidden">Работа над ошибками</button>
         <button id="restart-quiz-btn" class="btn primary-btn large-btn">Пройти еще раз</button>
         <button id="home-btn" class="btn secondary-btn large-btn">На главную</button>
+      </div>
+    </section>
+
+    <!-- Study Screen -->
+    <section id="study-screen" class="glass-card">
+      <div class="results-header">
+        <span class="hero-badge">🎓 Режим обучения</span>
+        <h2>Справочник всех вопросов и ответов</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 10px; line-height: 1.5;">Здесь собраны все 49 вопросов с правильными ответами и подробными разборами формул. Используйте фильтр для удобной навигации.</p>
+      </div>
+
+      <!-- Category Filter in Study Mode -->
+      <div class="study-filters" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; margin-bottom: 5px;">
+        <button class="filter-btn study-filter-btn active" data-study-category="all">Все разделы (49)</button>
+        <button class="filter-btn study-filter-btn" data-study-category="general">Общие ИТ/ИБ темы (25)</button>
+        <button class="filter-btn study-filter-btn" data-study-category="ai">Искусственный интеллект (17)</button>
+        <button class="filter-btn study-filter-btn" data-study-category="practical">Практические задачи (7)</button>
+      </div>
+
+      <!-- Search Bar -->
+      <div class="search-box-container" style="position: relative; margin-top: 5px; margin-bottom: 5px; width: 100%;">
+        <input type="text" id="study-search-input" placeholder="🔍 Поиск по ключевым словам в вопросах или ответах..." style="width: 100%; padding: 12px 20px; border-radius: var(--radius-md); border: 1px solid var(--card-border); background: hsla(0, 0%, 0%, 0.15); color: var(--text-main); font-family: var(--font-main); font-size: 0.95rem; outline: none; transition: all var(--transition-fast);">
+      </div>
+
+      <!-- Questions List -->
+      <div id="study-questions-list" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
+        <!-- Dynamically rendered study cards -->
+      </div>
+
+      <!-- Controls -->
+      <div class="action-bar">
+        <button id="study-back-btn" class="btn primary-btn large-btn">Вернуться на главную</button>
       </div>
     </section>
 
