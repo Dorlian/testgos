@@ -299,37 +299,52 @@ function showScreen(screen) {
    ========================================================================== */
 function startQuiz() {
   playSound('click');
-  
-  // 1. Filter Questions
+
   let rawQuestions = [];
-  if (activeCategory === 'all') {
-    rawQuestions = [...questions];
+
+  if (quizMode === 'exam') {
+    // EXAM MODE: 3 random questions from each category = 9 total
+    const categories = ['general', 'ai', 'practical'];
+    categories.forEach(cat => {
+      const pool = questions.filter(q => q.category === cat);
+      // Fisher-Yates shuffle pool, take first 3
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      rawQuestions.push(...pool.slice(0, 3));
+    });
   } else {
-    rawQuestions = questions.filter(q => q.category === activeCategory);
+    // TRAINING / AI MODE: use category filter as before
+    if (activeCategory === 'all') {
+      rawQuestions = [...questions];
+    } else {
+      rawQuestions = questions.filter(q => q.category === activeCategory);
+    }
   }
 
-  // Map each question to a new object with dynamically shuffled options
+  // Shuffle options within each question
   filteredQuestions = rawQuestions.map(q => shuffleQuestionOptions(q));
 
-  // Shuffle questions array always to prevent rote learning (Fisher-Yates)
+  // Shuffle question order (Fisher-Yates)
   for (let i = filteredQuestions.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [filteredQuestions[i], filteredQuestions[j]] = [filteredQuestions[j], filteredQuestions[i]];
   }
 
   if (filteredQuestions.length === 0) {
-    alert("В выбранном разделе нет вопросов!");
+    alert('В выбранном разделе нет вопросов!');
     return;
   }
 
-  // 2. Initialize State
+  // Initialize State
   currentQuestionIndex = 0;
   score = 0;
   userAnswers = [];
-  timeLeft = 25 * 60; // 25 mins
+  timeLeft = (quizMode === 'exam') ? 60 * 60 : 25 * 60; // 60 min exam, 25 min training
   quizStartTime = Date.now();
 
-  // 3. Configure Layout Mode
+  // Configure Layout Mode
   if (quizMode === 'exam') {
     DOM.examTimer.classList.remove('hidden');
     DOM.nextQBtn.textContent = 'Дальше';
@@ -340,7 +355,7 @@ function startQuiz() {
     stopTimer();
   }
 
-  // 4. Render First Question
+  // Render First Question
   renderQuestion();
   showScreen(DOM.quizScreen);
 }
@@ -365,7 +380,7 @@ function startRetryFailedQuiz() {
   currentQuestionIndex = 0;
   score = 0;
   userAnswers = [];
-  timeLeft = 25 * 60; // 25 mins
+  timeLeft = (quizMode === 'exam') ? 60 * 60 : 25 * 60;
   quizStartTime = Date.now();
 
   // Configure Layout Mode
