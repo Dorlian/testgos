@@ -538,13 +538,14 @@ function handleOptionClick(selectedIdx) {
     DOM.quizAskAiPanel.classList.remove('hidden'); // Show Ask AI
     triggerMathJax();
   } else {
-    // EXAM MODE: Highlight selection neutrally, auto-advance or show next
+    // EXAM MODE: Highlight selection neutrally, NO hints or AI
     playSound('click');
     optionButtons[selectedIdx].style.borderColor = 'var(--primary)';
     optionButtons[selectedIdx].style.backgroundColor = 'var(--primary-glow)';
     
     DOM.nextQBtn.classList.remove('hidden');
-    DOM.quizAskAiPanel.classList.remove('hidden'); // Show Ask AI in exam too
+    // DO NOT show Ask AI in exam mode — no hints allowed
+    DOM.quizAskAiPanel.classList.add('hidden');
   }
 }
 
