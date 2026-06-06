@@ -303,16 +303,16 @@ function startQuiz() {
   let rawQuestions = [];
 
   if (quizMode === 'exam') {
-    // EXAM MODE: 3 random questions from each category = 9 total
+    // EXAM MODE: 1 random question from each category = 3 total
     const categories = ['general', 'ai', 'practical'];
     categories.forEach(cat => {
       const pool = questions.filter(q => q.category === cat);
-      // Fisher-Yates shuffle pool, take first 3
+      // Fisher-Yates shuffle pool, take first 1
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
-      rawQuestions.push(...pool.slice(0, 3));
+      rawQuestions.push(pool[0]); // 1 question per category
     });
   } else {
     // TRAINING / AI MODE: use category filter as before
