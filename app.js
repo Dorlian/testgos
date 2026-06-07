@@ -615,12 +615,23 @@ function renderNavBar() {
     bar.appendChild(btn);
   });
 
-  // Show/hide finish button
+  // Show/hide finish, next, and skip buttons dynamically
   const allAnswered = filteredQuestions.every(q => userAnswers.some(a => a.questionId === q.id));
+  const isCurrentAnswered = userAnswers.some(a => a.questionId === filteredQuestions[currentQuestionIndex].id);
+
   if (allAnswered || filteredQuestions.length <= 1) {
     DOM.finishQuizBtn.classList.remove('hidden');
+    DOM.nextQBtn.classList.add('hidden');
+    DOM.skipQBtn.classList.add('hidden');
   } else {
     DOM.finishQuizBtn.classList.add('hidden');
+    if (isCurrentAnswered) {
+      DOM.nextQBtn.classList.remove('hidden');
+      DOM.skipQBtn.classList.add('hidden');
+    } else {
+      DOM.nextQBtn.classList.add('hidden');
+      DOM.skipQBtn.classList.remove('hidden');
+    }
   }
 }
 
@@ -666,7 +677,7 @@ function goToQuestion(idx) {
         optionButtons[answer.selectedIndex].style.backgroundColor = 'var(--primary-glow)';
       }
     }
-    DOM.nextQBtn.classList.remove('hidden');
+    // Automatically handled by renderNavBar() inside renderQuestion()
   }
   // If AI/written and answered — already handled by renderQuestion showing fresh (user can't re-answer)
 }
@@ -1122,7 +1133,9 @@ function checkAnswerWithAI() {
 
     // Show result card
     DOM.aiResultBox.classList.remove('hidden');
-    DOM.nextQBtn.classList.remove('hidden');
+    
+    // Dynamically update next/finish buttons
+    renderNavBar();
 
     DOM.aiResultBox.scrollIntoView({ behavior: 'smooth' });
 
@@ -1160,7 +1173,9 @@ function checkAnswerWithAI() {
     DOM.aiCommentText.textContent = 'Вы можете продолжить тест, нажав кнопку «Дальше» или принудительно засчитать ответ.';
 
     DOM.aiResultBox.classList.remove('hidden');
-    DOM.nextQBtn.classList.remove('hidden');
+    
+    // Dynamically update next/finish buttons
+    renderNavBar();
 
     DOM.aiResultBox.scrollIntoView({ behavior: 'smooth' });
   });

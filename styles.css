@@ -667,14 +667,21 @@ body {
 
 .quiz-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--card-border);
+}
+
+#quit-quiz-btn {
+  margin-right: auto;
 }
 
 .quiz-footer .hidden {
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
+  display: none !important;
 }
 
 /* ==========================================================================
@@ -1227,7 +1234,7 @@ body {
    ========================================================================== */
 #study-screen .action-bar {
   position: sticky;
-  bottom: 20px;
+  bottom: 12px;
   background: var(--card-bg);
   backdrop-filter: blur(25px);
   -webkit-backdrop-filter: blur(25px);
@@ -1237,6 +1244,8 @@ body {
   border-radius: var(--radius-md);
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
   z-index: 100;
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
 }
@@ -1441,9 +1450,11 @@ body {
 
 .quiz-ask-ai-body {
   padding: 0 18px 14px;
-  max-height: 600px;
+  max-height: 4000px;
   overflow: hidden;
-  transition: max-height 0.35s ease, padding 0.35s ease, opacity 0.25s ease;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transition: max-height 0.5s ease-out, padding 0.35s ease, opacity 0.25s ease;
   opacity: 1;
 }
 
@@ -1458,6 +1469,7 @@ body {
   display: flex;
   gap: 10px;
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .quiz-ai-input {
@@ -1769,18 +1781,53 @@ mjx-container::-webkit-scrollbar-track {
     padding-top: 20px;
   }
 
-  /* Fixed sticky action bar for results and study screens on mobile */
+  /* On mobile, make study/results action bars sticky at bottom with safe spacing */
   #results-screen .action-bar,
   #study-screen .action-bar {
-    position: static; /* Stack naturally on mobile to avoid viewport coverage */
+    position: sticky;
+    bottom: 8px;
     margin-top: 20px;
-    padding: 15px;
-    gap: 12px;
+    padding: 14px 16px;
+    gap: 10px;
+    justify-content: center;
   }
 
   .btn.large-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  /* Quiz footer wraps on mobile for last question buttons */
+  .quiz-footer {
+    gap: 8px;
+  }
+
+  .quiz-footer button {
+    flex: 1 1 auto;
+    min-width: 120px;
+    justify-content: center;
+  }
+
+  #quit-quiz-btn {
+    flex: 0 0 100%;
+    margin-right: 0;
+    order: 10; /* push quit button to bottom */
+  }
+
+  /* AI panel input wraps vertically on mobile */
+  .quiz-ai-input-row {
+    flex-direction: column;
+  }
+
+  .quiz-ai-send-btn {
+    width: 100% !important;
+  }
+
+  /* AI response box scrollable on mobile */
+  .quiz-ai-response {
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -1825,6 +1872,33 @@ mjx-container::-webkit-scrollbar-track {
   /* Question navigation bar wraps nicely on super small screens */
   #question-nav-bar {
     justify-content: center;
+  }
+
+  /* All quiz footer buttons become full-width rows on tiny screens */
+  .quiz-footer button {
+    flex: 0 0 100%;
+    min-width: unset;
+  }
+
+  #quit-quiz-btn {
+    order: 10;
+  }
+
+  /* Shrink sticky action bar padding on tiny screens */
+  #results-screen .action-bar,
+  #study-screen .action-bar {
+    padding: 12px 10px;
+    bottom: 4px;
+  }
+
+  /* AI panel body scrollable and reasonably tall */
+  .quiz-ask-ai-body {
+    max-height: 70vh;
+  }
+
+  /* Study card padding reduction */
+  .study-card {
+    padding: 16px 14px;
   }
 }
 
