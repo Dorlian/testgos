@@ -516,6 +516,124 @@ body {
   transition: width var(--transition-normal);
 }
 
+/* Question text content (div replacing h2 to support tables in practical tasks) */
+.question-text-content {
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: -0.3px;
+  color: var(--text-main);
+}
+
+/* Paragraph inside question (task intro) */
+.question-text-content p {
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.6;
+  margin: 8px 0;
+  letter-spacing: 0;
+}
+
+/* Task title inside question div */
+.question-text-content .task-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--text-main);
+}
+
+/* Task data block (conditions, matrices, schemas) */
+.question-text-content .task-data {
+  margin: 10px 0;
+  padding: 12px 16px;
+  background: hsla(0,0%,0%,0.15);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--primary);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* Preformatted code/matrix blocks in task conditions */
+.question-text-content pre,
+.question-text-content .task-matrix {
+  font-family: 'Courier New', monospace;
+  font-size: 0.88rem;
+  font-weight: 400;
+  line-height: 1.6;
+  background: hsla(0,0%,0%,0.2);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin: 8px 0;
+  overflow-x: auto;
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
+  letter-spacing: 0;
+}
+
+/* Task requirements list */
+.question-text-content .task-requirements {
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin: 10px 0;
+}
+
+.question-text-content .task-requirements li {
+  margin: 4px 0;
+  padding-left: 4px;
+  line-height: 1.5;
+}
+
+/* Tables in question conditions (practical tasks) */
+.question-text-content table,
+.question-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin: 10px 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.question-text-content table th,
+.question-table th {
+  background: hsla(250, 85%, 65%, 0.2);
+  color: var(--primary-hover);
+  font-weight: 700;
+  padding: 9px 12px;
+  text-align: center;
+  border: 1px solid var(--card-border);
+  font-size: 0.85rem;
+}
+
+.question-text-content table td,
+.question-table td {
+  padding: 8px 12px;
+  text-align: center;
+  border: 1px solid var(--card-border);
+  color: var(--text-main);
+  background: hsla(0, 0%, 0%, 0.1);
+}
+
+.question-text-content table tr:first-child th:first-child,
+.question-table tr:first-child th:first-child {
+  text-align: left;
+}
+
+/* Scrollable table wrapper for mobile */
+.question-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 10px 0;
+  border-radius: var(--radius-sm);
+}
+
+/* Legacy h2 support (in study card) */
 .question-container h2 {
   font-size: 1.45rem;
   font-weight: 700;
