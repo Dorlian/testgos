@@ -1695,11 +1695,34 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Ensure MathJax itself doesn't cause body overflow */
-mjx-container {
+/* Ensure MathJax itself doesn't cause body overflow and allows scrolling */
+mjx-container[display="true"] {
+  display: block !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 10px 0 !important;
+  text-align: center;
+}
+
+mjx-container:not([display="true"]) {
   max-width: 100% !important;
   overflow-x: auto !important;
   overflow-y: hidden !important;
+  vertical-align: middle;
+}
+
+/* Scrollbar styles for MathJax containers */
+mjx-container::-webkit-scrollbar {
+  height: 4px;
+}
+mjx-container::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.35);
+  border-radius: 2px;
+}
+mjx-container::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* General responsive rules */
