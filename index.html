@@ -209,6 +209,13 @@
       <!-- Textarea for AI Oral Exam Mode (Initially hidden) -->
       <div id="ai-write-container" class="ai-write-container hidden">
         <textarea id="ai-user-answer" placeholder="Напишите ваш подробный ответ на вопрос..."></textarea>
+        <div class="voice-input-bar">
+          <button id="voice-record-btn" class="btn voice-btn" title="Записать ответ голосом">
+            <span class="voice-btn-icon">🎤</span>
+            <span class="voice-btn-label">Записать голосом</span>
+          </button>
+          <span id="voice-status" class="voice-status hidden"></span>
+        </div>
         <div class="ai-action-bar">
           <button id="ai-check-btn" class="btn primary-btn">Отправить на проверку ИИ ⚡</button>
         </div>

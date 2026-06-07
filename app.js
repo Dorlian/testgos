@@ -110,6 +110,10 @@ const DOM = {
   academicAnswerBox: document.getElementById('academic-answer-box'),
   academicAnswerText: document.getElementById('academic-answer-text'),
 
+  // Voice Input
+  voiceRecordBtn: document.getElementById('voice-record-btn'),
+  voiceStatus: document.getElementById('voice-status'),
+
   // Quiz Ask AI panel
   quizAskAiPanel: document.getElementById('quiz-ask-ai-panel'),
   quizAskAiToggle: document.getElementById('quiz-ask-ai-toggle'),
@@ -124,7 +128,181 @@ const DOM = {
 // Start Setup
 document.addEventListener('DOMContentLoaded', () => {
   initEventListeners();
+  initVoiceInput();
 });
+
+/* ==========================================================================
+   VOICE INPUT MODULE (Web Speech API)
+   ========================================================================== */
+let speechRecognition = null;
+let isRecording = false;
+let voiceAccumulated = ''; // holds partial text across recognition sessions
+
+function initVoiceInput() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = DOM.voiceRecordBtn;
+  const status = DOM.voiceStatus;
+
+  if (!SpeechRecognition) {
+    // Browser doesn't support speech recognition — show message on button
+    btn.disabled = true;
+    btn.title = 'Ваш браузер не поддерживает голосовой ввод (используйте Chrome)';
+    btn.querySelector('.voice-btn-label').textContent = 'Голос недоступен';
+    btn.querySelector('.voice-btn-icon').textContent = '🚫';
+    status.textContent = 'Голосовой ввод не поддерживается вашим браузером. Используйте Chrome или Edge.';
+    status.classList.remove('hidden');
+    status.classList.add('not-supported');
+    return;
+  }
+
+  speechRecognition = new SpeechRecognition();
+  speechRecognition.lang = 'ru-RU';
+  speechRecognition.continuous = true;      // Keep listening until stopped manually
+  speechRecognition.interimResults = true;  // Show live partial results
+  speechRecognition.maxAlternatives = 1;
+
+  // On getting transcription results
+  speechRecognition.onresult = (event) => {
+    let interimTranscript = '';
+    let finalTranscript = '';
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += transcript + ' ';
+      } else {
+        interimTranscript += transcript;
+      }
+    }
+
+    if (finalTranscript) {
+      voiceAccumulated += finalTranscript;
+    }
+
+    // Show live preview in textarea (accumulated + current interim)
+    DOM.aiUserAnswer.value = voiceAccumulated + interimTranscript;
+
+    // Scroll textarea to bottom
+    DOM.aiUserAnswer.scrollTop = DOM.aiUserAnswer.scrollHeight;
+
+    // Update status with live indicator
+    if (interimTranscript) {
+      status.textContent = '🔴 Слушаю... «' + interimTranscript.slice(0, 60) + (interimTranscript.length > 60 ? '…' : '') + '»';
+    } else {
+      status.textContent = '🔴 Слушаю...';
+    }
+  };
+
+  // Recognition session ended (auto-restarts if still in recording mode)
+  speechRecognition.onend = () => {
+    if (isRecording) {
+      // Restart to keep recording continuously
+      try { speechRecognition.start(); } catch(e) { /* ignore */ }
+    } else {
+      setVoiceIdle();
+    }
+  };
+
+  speechRecognition.onerror = (event) => {
+    if (event.error === 'no-speech') {
+      // Normal — just no speech detected, keep going
+      return;
+    }
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      stopVoiceRecording();
+      status.textContent = '❌ Доступ к микрофону запрещён. Разрешите использование микрофона в браузере.';
+      status.classList.remove('hidden', 'recording-active');
+      return;
+    }
+    console.warn('Speech recognition error:', event.error);
+  };
+
+  // Button click handler
+  btn.addEventListener('click', () => {
+    if (isRecording) {
+      stopVoiceRecording();
+    } else {
+      startVoiceRecording();
+    }
+  });
+}
+
+function startVoiceRecording() {
+  if (!speechRecognition) return;
+  const btn = DOM.voiceRecordBtn;
+  const status = DOM.voiceStatus;
+
+  // Keep existing text as base
+  voiceAccumulated = DOM.aiUserAnswer.value;
+  if (voiceAccumulated && !voiceAccumulated.endsWith(' ')) {
+    voiceAccumulated += ' ';
+  }
+
+  isRecording = true;
+
+  try {
+    speechRecognition.start();
+  } catch(e) {
+    console.warn('Could not start speech recognition:', e);
+    isRecording = false;
+    return;
+  }
+
+  // Update button to recording state
+  btn.classList.add('recording');
+  btn.querySelector('.voice-btn-icon').textContent = '⏹';
+  btn.querySelector('.voice-btn-label').textContent = 'Остановить запись';
+  btn.title = 'Нажмите чтобы остановить запись';
+
+  // Show status
+  status.textContent = '🔴 Запись идёт... Говорите свой ответ';
+  status.classList.remove('hidden', 'not-supported');
+  status.classList.add('recording-active');
+  playSound('click');
+}
+
+function stopVoiceRecording() {
+  if (!speechRecognition) return;
+  isRecording = false;
+
+  try {
+    speechRecognition.stop();
+  } catch(e) { /* ignore */ }
+
+  // Processing state briefly
+  const btn = DOM.voiceRecordBtn;
+  btn.classList.remove('recording');
+  btn.classList.add('processing');
+  btn.querySelector('.voice-btn-icon').textContent = '⏳';
+  btn.querySelector('.voice-btn-label').textContent = 'Обработка...';
+
+  const status = DOM.voiceStatus;
+  status.textContent = '✅ Запись остановлена. Текст вставлен в поле ответа.';
+  status.classList.remove('recording-active');
+
+  // After short delay, restore idle state
+  setTimeout(() => setVoiceIdle(), 1800);
+  playSound('click');
+}
+
+function setVoiceIdle() {
+  const btn = DOM.voiceRecordBtn;
+  if (!btn) return;
+  btn.classList.remove('recording', 'processing');
+  btn.querySelector('.voice-btn-icon').textContent = '🎤';
+  btn.querySelector('.voice-btn-label').textContent = 'Записать голосом';
+  btn.title = 'Записать ответ голосом';
+
+  const status = DOM.voiceStatus;
+  // Show character count as helpful status when idle
+  const charCount = DOM.aiUserAnswer.value.length;
+  if (charCount > 0) {
+    status.textContent = `Символов в ответе: ${charCount}`;
+    status.classList.remove('hidden', 'recording-active', 'not-supported');
+  } else {
+    status.classList.add('hidden');
+  }
+}
 
 /* ==========================================================================
    SOUND CONTROLLER (Web Audio API Synthesizer)
@@ -534,6 +712,14 @@ function renderQuestion() {
   }
 
   if (quizMode === 'ai' || quizMode === 'written_exam') {
+    // Stop any ongoing voice recording before showing new question
+    if (isRecording) {
+      isRecording = false;
+      try { if (speechRecognition) speechRecognition.stop(); } catch(e) {}
+    }
+    voiceAccumulated = '';
+    setVoiceIdle();
+
     // Show AI writing workspace, HIDE and CLEAR choices grid completely
     DOM.aiWriteContainer.classList.remove('hidden');
     DOM.optionsGrid.style.display = 'none';
@@ -1133,6 +1319,9 @@ function checkAnswerWithAI() {
 
     // Show result card
     DOM.aiResultBox.classList.remove('hidden');
+
+    // Show Ask AI panel so user can ask follow-up questions
+    DOM.quizAskAiPanel.classList.remove('hidden');
     
     // Dynamically update next/finish buttons
     renderNavBar();
@@ -1173,6 +1362,9 @@ function checkAnswerWithAI() {
     DOM.aiCommentText.textContent = 'Вы можете продолжить тест, нажав кнопку «Дальше» или принудительно засчитать ответ.';
 
     DOM.aiResultBox.classList.remove('hidden');
+
+    // Show Ask AI panel so user can ask follow-up questions
+    DOM.quizAskAiPanel.classList.remove('hidden');
     
     // Dynamically update next/finish buttons
     renderNavBar();
