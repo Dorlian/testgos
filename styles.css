@@ -1212,9 +1212,6 @@ body {
   animation: micBounce 0.7s ease-in-out infinite alternate;
 }
 
-.voice-btn.recording .voice-btn-label::before {
-  content: "⏹ ";
-}
 
 @keyframes recordingPulse {
   0%, 100% { box-shadow: 0 0 0 0 hsla(355, 80%, 55%, 0.4); }

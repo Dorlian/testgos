@@ -132,92 +132,30 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ==========================================================================
-   VOICE INPUT MODULE (Web Speech API)
+   VOICE INPUT MODULE (Web Speech API) — cross-browser (Chrome, Edge, Yandex)
    ========================================================================== */
-let speechRecognition = null;
 let isRecording = false;
-let voiceAccumulated = ''; // holds partial text across recognition sessions
+let voiceAccumulated = '';   // final confirmed text across recognition sessions
+let voiceRestartTimer = null; // timer to delay restart and avoid race conditions
+let voiceSession = null;     // current active SpeechRecognition instance
+
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 function initVoiceInput() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = DOM.voiceRecordBtn;
   const status = DOM.voiceStatus;
 
-  if (!SpeechRecognition) {
-    // Browser doesn't support speech recognition — show message on button
+  if (!SpeechRecognitionAPI) {
     btn.disabled = true;
-    btn.title = 'Ваш браузер не поддерживает голосовой ввод (используйте Chrome)';
+    btn.title = 'Ваш браузер не поддерживает голосовой ввод (используйте Chrome или Яндекс Браузер)';
     btn.querySelector('.voice-btn-label').textContent = 'Голос недоступен';
     btn.querySelector('.voice-btn-icon').textContent = '🚫';
-    status.textContent = 'Голосовой ввод не поддерживается вашим браузером. Используйте Chrome или Edge.';
+    status.textContent = 'Голосовой ввод не поддерживается вашим браузером.';
     status.classList.remove('hidden');
     status.classList.add('not-supported');
     return;
   }
 
-  speechRecognition = new SpeechRecognition();
-  speechRecognition.lang = 'ru-RU';
-  speechRecognition.continuous = true;      // Keep listening until stopped manually
-  speechRecognition.interimResults = true;  // Show live partial results
-  speechRecognition.maxAlternatives = 1;
-
-  // On getting transcription results
-  speechRecognition.onresult = (event) => {
-    let interimTranscript = '';
-    let finalTranscript = '';
-
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalTranscript += transcript + ' ';
-      } else {
-        interimTranscript += transcript;
-      }
-    }
-
-    if (finalTranscript) {
-      voiceAccumulated += finalTranscript;
-    }
-
-    // Show live preview in textarea (accumulated + current interim)
-    DOM.aiUserAnswer.value = voiceAccumulated + interimTranscript;
-
-    // Scroll textarea to bottom
-    DOM.aiUserAnswer.scrollTop = DOM.aiUserAnswer.scrollHeight;
-
-    // Update status with live indicator
-    if (interimTranscript) {
-      status.textContent = '🔴 Слушаю... «' + interimTranscript.slice(0, 60) + (interimTranscript.length > 60 ? '…' : '') + '»';
-    } else {
-      status.textContent = '🔴 Слушаю...';
-    }
-  };
-
-  // Recognition session ended (auto-restarts if still in recording mode)
-  speechRecognition.onend = () => {
-    if (isRecording) {
-      // Restart to keep recording continuously
-      try { speechRecognition.start(); } catch(e) { /* ignore */ }
-    } else {
-      setVoiceIdle();
-    }
-  };
-
-  speechRecognition.onerror = (event) => {
-    if (event.error === 'no-speech') {
-      // Normal — just no speech detected, keep going
-      return;
-    }
-    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-      stopVoiceRecording();
-      status.textContent = '❌ Доступ к микрофону запрещён. Разрешите использование микрофона в браузере.';
-      status.classList.remove('hidden', 'recording-active');
-      return;
-    }
-    console.warn('Speech recognition error:', event.error);
-  };
-
-  // Button click handler
   btn.addEventListener('click', () => {
     if (isRecording) {
       stopVoiceRecording();
@@ -227,12 +165,125 @@ function initVoiceInput() {
   });
 }
 
+/**
+ * Creates a fresh SpeechRecognition instance.
+ * Yandex Browser requires a new object each session — reusing causes errors.
+ */
+function createVoiceSession() {
+  // Destroy previous session safely
+  if (voiceSession) {
+    voiceSession.onresult = null;
+    voiceSession.onerror = null;
+    voiceSession.onend = null;
+    try { voiceSession.abort(); } catch(e) { /* ignore */ }
+    voiceSession = null;
+  }
+
+  const sr = new SpeechRecognitionAPI();
+  sr.lang = 'ru-RU';
+  sr.continuous = true;       // Позволяет непрерывный ввод без частых перезапусков
+  sr.interimResults = true;
+  sr.maxAlternatives = 1;
+
+  sr.onresult = (event) => {
+    let interimTranscript = '';
+    let finalTranscript = '';
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const text = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        finalTranscript += text + ' ';
+      } else {
+        interimTranscript += text;
+      }
+    }
+
+    if (finalTranscript) {
+      voiceAccumulated += finalTranscript;
+    }
+
+    DOM.aiUserAnswer.value = voiceAccumulated + interimTranscript;
+    DOM.aiUserAnswer.scrollTop = DOM.aiUserAnswer.scrollHeight;
+
+    const status = DOM.voiceStatus;
+    if (interimTranscript) {
+      status.textContent = '🔴 Слушаю... «' + interimTranscript.slice(0, 55) +
+        (interimTranscript.length > 55 ? '…' : '') + '»';
+    } else {
+      status.textContent = '🔴 Слушаю...';
+    }
+  };
+
+  sr.onerror = (event) => {
+    const err = event.error;
+
+    // no-speech и aborted — штатные ситуации, не останавливаем запись
+    if (err === 'no-speech' || err === 'aborted') {
+      return;
+    }
+
+    isRecording = false;
+    clearVoiceRestartTimer();
+    const status = DOM.voiceStatus;
+
+    if (err === 'not-allowed') {
+      status.textContent = '❌ Доступ к микрофону запрещён. Разрешите доступ к микрофону в настройках браузера.';
+    } else if (err === 'service-not-allowed' || err === 'network') {
+      status.textContent = '❌ Сервис распознавания недоступен. Яндекс Браузер может блокировать облачный API. Попробуйте Chrome или Edge.';
+    } else if (err === 'audio-capture') {
+      status.textContent = '❌ Ошибка записи: микрофон не найден или занят.';
+    } else {
+      status.textContent = `❌ Ошибка голосового ввода (${err}). Запись остановлена.`;
+    }
+
+    status.classList.remove('hidden', 'recording-active');
+    setVoiceIdle();
+    console.warn('Speech recognition error:', err);
+  };
+
+  sr.onend = () => {
+    // Если флаг записи ещё активен — перезапускаем сессию с задержкой.
+    // Задержка 120мс критична для Яндекс Браузера: без неё новый start()
+    // выбрасывает InvalidStateError пока предыдущая сессия не завершилась полностью.
+    if (isRecording) {
+      scheduleVoiceRestart();
+    } else {
+      setVoiceIdle();
+    }
+  };
+
+  return sr;
+}
+
+function scheduleVoiceRestart() {
+  clearVoiceRestartTimer();
+  voiceRestartTimer = setTimeout(() => {
+    if (!isRecording) return;
+    voiceSession = createVoiceSession();
+    try {
+      voiceSession.start();
+    } catch(e) {
+      console.warn('Voice restart failed:', e);
+      // Попробуем ещё раз через 300мс
+      scheduleVoiceRestart();
+    }
+  }, 120);
+}
+
+function clearVoiceRestartTimer() {
+  if (voiceRestartTimer) {
+    clearTimeout(voiceRestartTimer);
+    voiceRestartTimer = null;
+  }
+}
+
 function startVoiceRecording() {
-  if (!speechRecognition) return;
+  if (isRecording) return;
+
   const btn = DOM.voiceRecordBtn;
   const status = DOM.voiceStatus;
 
-  // Keep existing text as base
+  // Preserve any existing typed text as base for accumulation
   voiceAccumulated = DOM.aiUserAnswer.value;
   if (voiceAccumulated && !voiceAccumulated.endsWith(' ')) {
     voiceAccumulated += ' ';
@@ -240,21 +291,21 @@ function startVoiceRecording() {
 
   isRecording = true;
 
+  voiceSession = createVoiceSession();
   try {
-    speechRecognition.start();
+    voiceSession.start();
   } catch(e) {
     console.warn('Could not start speech recognition:', e);
     isRecording = false;
+    voiceSession = null;
     return;
   }
 
-  // Update button to recording state
   btn.classList.add('recording');
   btn.querySelector('.voice-btn-icon').textContent = '⏹';
   btn.querySelector('.voice-btn-label').textContent = 'Остановить запись';
   btn.title = 'Нажмите чтобы остановить запись';
 
-  // Show status
   status.textContent = '🔴 Запись идёт... Говорите свой ответ';
   status.classList.remove('hidden', 'not-supported');
   status.classList.add('recording-active');
@@ -262,14 +313,14 @@ function startVoiceRecording() {
 }
 
 function stopVoiceRecording() {
-  if (!speechRecognition) return;
   isRecording = false;
+  clearVoiceRestartTimer();
 
-  try {
-    speechRecognition.stop();
-  } catch(e) { /* ignore */ }
+  if (voiceSession) {
+    try { voiceSession.stop(); } catch(e) { /* ignore */ }
+    voiceSession = null;
+  }
 
-  // Processing state briefly
   const btn = DOM.voiceRecordBtn;
   btn.classList.remove('recording');
   btn.classList.add('processing');
@@ -280,8 +331,7 @@ function stopVoiceRecording() {
   status.textContent = '✅ Запись остановлена. Текст вставлен в поле ответа.';
   status.classList.remove('recording-active');
 
-  // After short delay, restore idle state
-  setTimeout(() => setVoiceIdle(), 1800);
+  setTimeout(() => setVoiceIdle(), 1500);
   playSound('click');
 }
 
@@ -294,7 +344,6 @@ function setVoiceIdle() {
   btn.title = 'Записать ответ голосом';
 
   const status = DOM.voiceStatus;
-  // Show character count as helpful status when idle
   const charCount = DOM.aiUserAnswer.value.length;
   if (charCount > 0) {
     status.textContent = `Символов в ответе: ${charCount}`;
@@ -715,7 +764,11 @@ function renderQuestion() {
     // Stop any ongoing voice recording before showing new question
     if (isRecording) {
       isRecording = false;
-      try { if (speechRecognition) speechRecognition.stop(); } catch(e) {}
+      clearVoiceRestartTimer();
+      if (voiceSession) {
+        try { voiceSession.abort(); } catch(e) {}
+        voiceSession = null;
+      }
     }
     voiceAccumulated = '';
     setVoiceIdle();
