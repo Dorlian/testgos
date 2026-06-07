@@ -662,7 +662,7 @@ function goToQuestion(idx) {
         DOM.feedbackIcon.textContent = '✓';
       } else {
         optionButtons[answer.selectedIndex].classList.add('wrong');
-        if (optionButtons[q.correctIndex]) optionButtons[q.correctIndex].classList.add('correct');
+        if (optionButtons[q.correctIndex ?? 0]) optionButtons[q.correctIndex ?? 0].classList.add('correct');
         DOM.explanationBox.className = 'explanation-box wrong-feedback';
         DOM.feedbackText.textContent = 'Неправильно';
         DOM.feedbackIcon.textContent = '✗';
@@ -720,7 +720,7 @@ function handleOptionClick(selectedIdx) {
   const optionButtons = DOM.optionsGrid.querySelectorAll('.option-btn');
   optionButtons.forEach(btn => btn.disabled = true);
 
-  const isCorrect = (selectedIdx === currentQuestion.correctIndex);
+  const isCorrect = (selectedIdx === (currentQuestion.correctIndex ?? 0));
   if (isCorrect) score++;
 
   userAnswers.push({
@@ -740,7 +740,7 @@ function handleOptionClick(selectedIdx) {
     } else {
       playSound('wrong');
       optionButtons[selectedIdx].classList.add('wrong');
-      optionButtons[currentQuestion.correctIndex].classList.add('correct');
+      optionButtons[currentQuestion.correctIndex ?? 0].classList.add('correct');
       DOM.explanationBox.className = 'explanation-box wrong-feedback';
       DOM.feedbackText.textContent = 'Неправильно';
       DOM.feedbackIcon.textContent = '✗';
@@ -1243,7 +1243,7 @@ function renderStudyQuestions() {
     // Construct Options list
     let optionsHtml = '';
     q.options.forEach((opt, optIdx) => {
-      const isCorrect = optIdx === q.correctIndex;
+      const isCorrect = optIdx === (q.correctIndex ?? 0);
       optionsHtml += `
         <div class="study-option ${isCorrect ? 'correct' : ''}">
           ${isCorrect ? '✓ ' : '• '} ${opt}
@@ -1422,7 +1422,7 @@ function sendResAiQuestion(panelId, questionId) {
   if (sendBtn) sendBtn.disabled = true;
   inputEl.disabled = true;
 
-  const correctOption = q.options ? q.options[q.correctIndex] : '';
+  const correctOption = q.options ? q.options[q.correctIndex ?? 0] : '';
   const shortExplanation = (q.explanation || '').slice(0, 300);
   const etalonContext = `Правильный ответ: ${correctOption}\n${shortExplanation}`;
 
@@ -1482,7 +1482,7 @@ function quizAskAI() {
   // Build a SHORT context — only question + correct answer + explanation
   // (do NOT send all 4 long option texts — it makes prompts huge and slow)
   const correctOption = currentQuestion.options
-    ? currentQuestion.options[currentQuestion.correctIndex]
+    ? currentQuestion.options[currentQuestion.correctIndex ?? 0]
     : '';
   // Trim explanation to first 300 chars to keep prompt small
   const shortExplanation = (currentQuestion.explanation || '').slice(0, 300);
@@ -1827,7 +1827,7 @@ function buildConstructorResult() {
     if (Array.isArray(q.options)) {
       optionsHtml = '<div class="constr-options-list">' +
         q.options.map((opt, i) => {
-          const isCorrect = i === q.correctIndex;
+          const isCorrect = i === (q.correctIndex ?? 0);
           return `<div class="study-option${isCorrect ? ' correct' : ''}">
             <span class="option-indicator">${String.fromCharCode(65 + i)}</span>
             <span>${opt}</span>
@@ -1903,7 +1903,7 @@ function exportConstructorToPDF() {
     let optionsHtml = '';
     if (Array.isArray(q.options)) {
       optionsHtml = q.options.map((opt, i) => {
-        const isCorrect = i === q.correctIndex;
+        const isCorrect = i === (q.correctIndex ?? 0);
         return `<div class="opt ${isCorrect ? 'opt-correct' : ''}">
           <span class="opt-letter">${String.fromCharCode(65 + i)}.</span>
           <span class="opt-text">${opt}</span>
@@ -2178,7 +2178,7 @@ function exportQuizToPDF() {
       if (Array.isArray(q.options)) {
         optionsHtml = q.options.map((opt, i) => {
           const isUserChoice = i === ans.selectedIndex;
-          const isCorrect = i === q.correctIndex;
+          const isCorrect = i === (q.correctIndex ?? 0);
           let optClass = '';
           if (isCorrect) optClass = 'opt-correct';
           else if (isUserChoice) optClass = 'opt-wrong';
