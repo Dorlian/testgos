@@ -17,6 +17,58 @@ let activeStudyCategory = 'all';
 let activeConstrCategory = 'all';
 let selectedConstrIds = new Set();
 let skippedQuestions = new Set(); // Indexes of skipped questions
+let fullAnswersMap = {};
+
+/**
+ * Fetch and dynamically parse the main Markdown answers file answers_GE_APIb-22_leto_2026.md
+ * to extract comprehensive answers and solutions for all 49 questions.
+ */
+function loadFullAnswers() {
+  fetch('/answers_GE_APIb-22_leto_2026.md')
+    .then(r => {
+      if (!r.ok) throw new Error('Failed to load answers file');
+      return r.text();
+    })
+    .then(text => {
+      const lines = text.split('\n');
+      const map = {};
+      for (let id = 1; id <= 49; id++) {
+        let headerPattern = '';
+        if (id <= 25) {
+          headerPattern = `## Вопрос ${id}.`;
+        } else if (id >= 26 && id <= 42) {
+          headerPattern = `## Вопрос ${id + 5}.`;
+        } else {
+          headerPattern = `## Задание ${id - 42}.`;
+        }
+
+        let startIdx = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].trim().startsWith(headerPattern)) {
+            startIdx = i;
+            break;
+          }
+        }
+
+        if (startIdx !== -1) {
+          let endIdx = lines.length;
+          for (let i = startIdx + 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('## Вопрос') || line.startsWith('## Задание') || line.startsWith('# Часть') || line.startsWith('# Ответы')) {
+              endIdx = i;
+              break;
+            }
+          }
+          map[id] = lines.slice(startIdx + 1, endIdx).join('\n').trim();
+        }
+      }
+      fullAnswersMap = map;
+      console.log('Loaded full answers map:', Object.keys(fullAnswersMap).length);
+    })
+    .catch(err => {
+      console.error('Error loading full answers:', err);
+    });
+}
 
 // Web Audio API Context for synthesized sound effects
 let audioCtx = null;
@@ -127,6 +179,7 @@ const DOM = {
 
 // Start Setup
 document.addEventListener('DOMContentLoaded', () => {
+  loadFullAnswers();
   initEventListeners();
   initVoiceInput();
 });
@@ -1147,7 +1200,7 @@ function finishQuiz() {
           </div>
           <p class="reason" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
             <strong>📚 Эталонный академический ответ:</strong><br>
-            <span>${q.explanation ? markdownToHtml(q.explanation) : ''}</span>
+            <span>${(fullAnswersMap[q.id] || q.explanation) ? markdownToHtml(fullAnswersMap[q.id] || q.explanation) : ''}</span>
           </p>
         `;
       } else {
@@ -1156,7 +1209,7 @@ function finishQuiz() {
           <h4>${q.question}</h4>
           <div class="wrong-answer-choice">❌ Ваш ответ: <strong>${q.options[answer.selectedIndex]}</strong></div>
           <div class="correct-answer-choice">✓ Правильный ответ: <strong>${q.options[q.correctIndex]}</strong></div>
-          <p class="reason">${q.explanation ? markdownToHtml(q.explanation) : ''}</p>
+          <p class="reason">${(fullAnswersMap[q.id] || q.explanation) ? markdownToHtml(fullAnswersMap[q.id] || q.explanation) : ''}</p>
         `;
       }
 
@@ -1507,7 +1560,7 @@ function renderStudyQuestions() {
       </div>
       <p class="reason" style="margin-top: 10px; border-top: 1px solid var(--card-border); padding-top: 15px; color: var(--text-muted); font-size: 0.9rem; line-height: 1.6;">
         <strong>📚 Разбор решения:</strong><br>
-        <span class="tex2jax_process">${q.explanation ? markdownToHtml(q.explanation) : ''}</span>
+        <span class="tex2jax_process">${(fullAnswersMap[q.id] || q.explanation) ? markdownToHtml(fullAnswersMap[q.id] || q.explanation) : ''}</span>
       </p>
       
       <!-- AI Question Section -->
@@ -1570,7 +1623,7 @@ function renderStudyQuestions() {
         },
         body: JSON.stringify({
           question: q.question,
-          etalon: q.explanation,
+          etalon: fullAnswersMap[q.id] || q.explanation,
           userQuestion: userQuestionText
         })
       })
@@ -1668,7 +1721,8 @@ function sendResAiQuestion(panelId, questionId) {
   inputEl.disabled = true;
 
   const correctOption = q.options ? q.options[q.correctIndex ?? 0] : '';
-  const etalonContext = `Правильный ответ: ${correctOption}\n${q.explanation || ''}`;
+  const fullExplanation = fullAnswersMap[q.id] || q.explanation || '';
+  const etalonContext = `Правильный ответ: ${correctOption}\n${fullExplanation}`;
 
   fetch('/api/check-answer', {
     method: 'POST',
@@ -2067,6 +2121,7 @@ function buildConstructorResult() {
     card.style.border = '1px solid rgba(167,139,250,0.25)';
 
     const correctOptionText = Array.isArray(q.options) ? q.options[q.correctIndex ?? 0] : '';
+    const fullExplanation = fullAnswersMap[q.id] || q.explanation || '';
 
     card.innerHTML = `
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
@@ -2081,10 +2136,10 @@ function buildConstructorResult() {
           <strong style="color:var(--correct); font-size:0.95rem;">Ответ:</strong>
           <p style="margin-top:6px; font-weight:600; font-size:0.95rem; color:var(--text-main);">${correctOptionText}</p>
         </div>
-        ${q.explanation ? `
+        ${fullExplanation ? `
           <div style="margin-top:14px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 12px;">
             <strong style="color:var(--primary); font-size:0.9rem;">📚 Подробный разбор и решение:</strong>
-            <div style="margin-top:8px; line-height:1.6; color:var(--text-secondary);">${markdownToHtml(q.explanation)}</div>
+            <div style="margin-top:8px; line-height:1.6; color:var(--text-secondary);">${markdownToHtml(fullExplanation)}</div>
           </div>
         ` : ''}
       </div>
@@ -2139,7 +2194,8 @@ function exportConstructorToPDF() {
   let questionsHtml = '';
   selectedQuestions.forEach((q, idx) => {
     const correctOptionText = Array.isArray(q.options) ? q.options[q.correctIndex ?? 0] : '';
-    const explanation = q.explanation ? markdownToHtml(q.explanation) : '';
+    const fullExplanation = fullAnswersMap[q.id] || q.explanation || '';
+    const explanation = fullExplanation ? markdownToHtml(fullExplanation) : '';
 
     // Capture AI response from DOM if user asked a question
     const aiPanelId = `constr-ai-${q.id}`;
@@ -2426,7 +2482,8 @@ function exportQuizToPDF() {
       userAnsHtml = `<div class="q-options">${optionsHtml}</div>`;
     }
 
-    const explanation = q.explanation ? markdownToHtml(q.explanation) : '';
+    const fullExplanation = fullAnswersMap[q.id] || q.explanation || '';
+    const explanation = fullExplanation ? markdownToHtml(fullExplanation) : '';
 
     questionsHtml += `
       <div class="q-block">
