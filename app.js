@@ -14,6 +14,9 @@ let quizStartTime = 0;
 let totalTimeTaken = 0;
 let failedQuestionIds = [];
 let activeStudyCategory = 'all';
+let activeConstrCategory = 'all';
+let selectedConstrIds = new Set();
+let skippedQuestions = new Set(); // Indexes of skipped questions
 
 // Web Audio API Context for synthesized sound effects
 let audioCtx = null;
@@ -28,6 +31,9 @@ const DOM = {
   startQuizBtn: document.getElementById('start-quiz-btn'),
   quitQuizBtn: document.getElementById('quit-quiz-btn'),
   nextQBtn: document.getElementById('next-q-btn'),
+  skipQBtn: document.getElementById('skip-q-btn'),
+  finishQuizBtn: document.getElementById('finish-quiz-btn'),
+  questionNavBar: document.getElementById('question-nav-bar'),
   restartQuizBtn: document.getElementById('restart-quiz-btn'),
   retryFailedBtn: document.getElementById('retry-failed-btn'),
   homeBtn: document.getElementById('home-btn'),
@@ -36,7 +42,24 @@ const DOM = {
   studyQuestionsList: document.getElementById('study-questions-list'),
   studySearchInput: document.getElementById('study-search-input'),
   studyBackBtn: document.getElementById('study-back-btn'),
-  
+
+  // Constructor
+  constructorModeBtn: document.getElementById('constructor-mode-btn'),
+  constructorScreen: document.getElementById('constructor-screen'),
+  constructorList: document.getElementById('constructor-list'),
+  constructorBackBtn: document.getElementById('constructor-back-btn'),
+  constructorBuildBtn: document.getElementById('constructor-build-btn'),
+  constrSelectAll: document.getElementById('constr-select-all'),
+  constrDeselectAll: document.getElementById('constr-deselect-all'),
+  constrCountBadge: document.getElementById('constr-count-badge'),
+  constrSearchInput: document.getElementById('constr-search-input'),
+  constructorResultScreen: document.getElementById('constructor-result-screen'),
+  constructorResultList: document.getElementById('constructor-result-list'),
+  constrResultSubtitle: document.getElementById('constr-result-subtitle'),
+  constructorResultBackBtn: document.getElementById('constructor-result-back-btn'),
+  constructorResultHomeBtn: document.getElementById('constructor-result-home-btn'),
+  constructorExportPdfBtn: document.getElementById('constructor-export-pdf-btn'),
+
   // Quiz HUD
   categoryBadge: document.getElementById('category-badge'),
   currentQNum: document.getElementById('current-q-num'),
@@ -65,6 +88,7 @@ const DOM = {
   resultCorrect: document.getElementById('result-correct'),
   resultWrong: document.getElementById('result-wrong'),
   wrongAnswersList: document.getElementById('wrong-answers-list'),
+  quizExportPdfBtn: document.getElementById('quiz-export-pdf-btn'),
 
   // Custom Confirm Modal
   confirmModal: document.getElementById('confirm-modal'),
@@ -223,8 +247,11 @@ function initEventListeners() {
   DOM.confirmCancelBtn.addEventListener('click', hideConfirmModal);
   DOM.confirmOkBtn.addEventListener('click', executeQuitQuiz);
   DOM.nextQBtn.addEventListener('click', goToNextQuestion);
+  DOM.skipQBtn.addEventListener('click', skipQuestion);
+  DOM.finishQuizBtn.addEventListener('click', () => { playSound('click'); finishQuiz(); });
   DOM.restartQuizBtn.addEventListener('click', () => { showScreen(DOM.startScreen); playSound('click'); });
   DOM.retryFailedBtn.addEventListener('click', startRetryFailedQuiz);
+  DOM.quizExportPdfBtn.addEventListener('click', () => { playSound('click'); exportQuizToPDF(); });
   if (DOM.overrideCorrectBtn) {
     DOM.overrideCorrectBtn.addEventListener('click', overrideAsCorrect);
   }
@@ -261,6 +288,53 @@ function initEventListeners() {
 
   DOM.studySearchInput.addEventListener('input', filterStudyQuestions);
 
+  // Constructor Mode
+  DOM.constructorModeBtn.addEventListener('click', () => {
+    playSound('click');
+    activeConstrCategory = 'all';
+    selectedConstrIds.clear(); // Reset selections when opening constructor
+    renderConstructorList();
+    showScreen(DOM.constructorScreen);
+  });
+  DOM.constructorBackBtn.addEventListener('click', () => { playSound('click'); showScreen(DOM.startScreen); });
+  DOM.constructorResultBackBtn.addEventListener('click', () => { playSound('click'); showScreen(DOM.constructorScreen); });
+  DOM.constructorResultHomeBtn.addEventListener('click', () => { playSound('click'); showScreen(DOM.startScreen); });
+  DOM.constructorExportPdfBtn.addEventListener('click', () => { playSound('click'); exportConstructorToPDF(); });
+  DOM.constructorBuildBtn.addEventListener('click', buildConstructorResult);
+  DOM.constrSelectAll.addEventListener('click', () => {
+    // Add all visible questions in current filter to selectedConstrIds
+    let pool = activeConstrCategory === 'all'
+      ? questions
+      : questions.filter(q => q.category === activeConstrCategory);
+    const sv = DOM.constrSearchInput.value.toLowerCase().trim();
+    if (sv) pool = pool.filter(q => q.question.toLowerCase().includes(sv) || (q.explanation||'').toLowerCase().includes(sv));
+    pool.forEach(q => selectedConstrIds.add(q.id));
+    renderConstructorList();
+    playSound('click');
+  });
+  DOM.constrDeselectAll.addEventListener('click', () => {
+    // Remove all visible questions in current filter from selectedConstrIds
+    let pool = activeConstrCategory === 'all'
+      ? questions
+      : questions.filter(q => q.category === activeConstrCategory);
+    const sv = DOM.constrSearchInput.value.toLowerCase().trim();
+    if (sv) pool = pool.filter(q => q.question.toLowerCase().includes(sv) || (q.explanation||'').toLowerCase().includes(sv));
+    pool.forEach(q => selectedConstrIds.delete(q.id));
+    renderConstructorList();
+    playSound('click');
+  });
+  document.querySelectorAll('.constr-filter').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.constr-filter').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeConstrCategory = btn.dataset.constrCat;
+      renderConstructorList();
+      playSound('click');
+    });
+  });
+
+  DOM.constrSearchInput.addEventListener('input', renderConstructorList);
+
   // Quiz Ask AI panel
   DOM.quizAskAiToggle.addEventListener('click', () => {
     const isOpen = !DOM.quizAskAiBody.classList.contains('collapsed');
@@ -282,11 +356,13 @@ function initEventListeners() {
 }
 
 function showScreen(screen) {
-  // Hide ALL screens (including study screen)
+  // Hide ALL screens (including study and constructor screens)
   DOM.startScreen.classList.remove('active');
   DOM.quizScreen.classList.remove('active');
   DOM.resultsScreen.classList.remove('active');
   DOM.studyScreen.classList.remove('active');
+  DOM.constructorScreen.classList.remove('active');
+  DOM.constructorResultScreen.classList.remove('active');
   
   // Show target
   screen.classList.add('active');
@@ -302,17 +378,16 @@ function startQuiz() {
 
   let rawQuestions = [];
 
-  if (quizMode === 'exam') {
-    // EXAM MODE: 1 random question from each category = 3 total
+  if (quizMode === 'exam' || quizMode === 'written_exam') {
+    // EXAM / WRITTEN EXAM: 1 random question from each category = 3 total
     const categories = ['general', 'ai', 'practical'];
     categories.forEach(cat => {
       const pool = questions.filter(q => q.category === cat);
-      // Fisher-Yates shuffle pool, take first 1
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
-      rawQuestions.push(pool[0]); // 1 question per category
+      rawQuestions.push(pool[0]);
     });
   } else {
     // TRAINING / AI MODE: use category filter as before
@@ -341,7 +416,8 @@ function startQuiz() {
   currentQuestionIndex = 0;
   score = 0;
   userAnswers = [];
-  timeLeft = (quizMode === 'exam') ? 60 * 60 : 25 * 60; // 60 min exam, 25 min training
+  skippedQuestions = new Set();
+  timeLeft = (quizMode === 'exam') ? 60 * 60 : 25 * 60;
   quizStartTime = Date.now();
 
   // Configure Layout Mode
@@ -380,6 +456,7 @@ function startRetryFailedQuiz() {
   currentQuestionIndex = 0;
   score = 0;
   userAnswers = [];
+  skippedQuestions = new Set();
   timeLeft = (quizMode === 'exam') ? 60 * 60 : 25 * 60;
   quizStartTime = Date.now();
 
@@ -443,6 +520,7 @@ function renderQuestion() {
   // Clear layout box
   DOM.explanationBox.classList.add('hidden');
   DOM.nextQBtn.classList.add('hidden');
+  DOM.finishQuizBtn.classList.add('hidden');
   // Reset quiz Ask AI panel
   DOM.quizAskAiPanel.classList.add('hidden');
   DOM.quizAskAiBody.classList.add('collapsed');
@@ -455,11 +533,11 @@ function renderQuestion() {
     DOM.overrideCorrectBtn.classList.add('hidden');
   }
 
-  if (quizMode === 'ai') {
+  if (quizMode === 'ai' || quizMode === 'written_exam') {
     // Show AI writing workspace, HIDE and CLEAR choices grid completely
     DOM.aiWriteContainer.classList.remove('hidden');
     DOM.optionsGrid.style.display = 'none';
-    DOM.optionsGrid.innerHTML = ''; // Clear old buttons from previous test
+    DOM.optionsGrid.innerHTML = '';
     DOM.aiResultBox.classList.add('hidden');
     DOM.aiLoadingBox.classList.add('hidden');
     
@@ -494,8 +572,133 @@ function renderQuestion() {
     });
   }
 
+  // Update nav bar
+  renderNavBar();
+
   // Render LaTeX math formulas
   triggerMathJax();
+}
+
+/**
+ * Render the question number navigation bar.
+ * Colors: current=primary, correct=green, wrong=red, exam-done=purple, skipped=orange, unanswered=gray
+ */
+function renderNavBar() {
+  const bar = DOM.questionNavBar;
+  bar.innerHTML = '';
+
+  filteredQuestions.forEach((q, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'nav-q-btn';
+    btn.textContent = idx + 1;
+
+    const answer = userAnswers.find(a => a.questionId === q.id);
+    const isSkipped = skippedQuestions.has(idx);
+
+    if (idx === currentQuestionIndex) {
+      btn.classList.add('nav-current');
+    } else if (answer) {
+      if (answer.selectedIndex === -1) {
+        // AI/written mode - just show as done
+        btn.classList.add('nav-done');
+      } else if (answer.correct) {
+        btn.classList.add('nav-correct');
+      } else {
+        btn.classList.add('nav-wrong');
+      }
+    } else if (isSkipped) {
+      btn.classList.add('nav-skipped');
+    }
+    // else: default gray = unanswered
+
+    btn.addEventListener('click', () => goToQuestion(idx));
+    bar.appendChild(btn);
+  });
+
+  // Show/hide finish button
+  const allAnswered = filteredQuestions.every(q => userAnswers.some(a => a.questionId === q.id));
+  if (allAnswered || filteredQuestions.length <= 1) {
+    DOM.finishQuizBtn.classList.remove('hidden');
+  } else {
+    DOM.finishQuizBtn.classList.add('hidden');
+  }
+}
+
+/**
+ * Jump to any question by index.
+ * If already answered: restores the answered visual state (read-only).
+ * If unanswered/skipped: shows fresh question.
+ */
+function goToQuestion(idx) {
+  if (idx < 0 || idx >= filteredQuestions.length) return;
+  playSound('click');
+  currentQuestionIndex = idx;
+  const q = filteredQuestions[idx];
+  const answer = userAnswers.find(a => a.questionId === q.id);
+
+  renderQuestion(); // resets everything to fresh state
+
+  if (answer && answer.selectedIndex !== -1) {
+    // Restore answered multiple-choice state
+    const optionButtons = DOM.optionsGrid.querySelectorAll('.option-btn');
+    optionButtons.forEach(btn => btn.disabled = true);
+
+    if (quizMode === 'training') {
+      if (answer.correct) {
+        optionButtons[answer.selectedIndex].classList.add('correct');
+        DOM.explanationBox.className = 'explanation-box correct-feedback';
+        DOM.feedbackText.textContent = 'Правильно!';
+        DOM.feedbackIcon.textContent = '✓';
+      } else {
+        optionButtons[answer.selectedIndex].classList.add('wrong');
+        if (optionButtons[q.correctIndex]) optionButtons[q.correctIndex].classList.add('correct');
+        DOM.explanationBox.className = 'explanation-box wrong-feedback';
+        DOM.feedbackText.textContent = 'Неправильно';
+        DOM.feedbackIcon.textContent = '✗';
+      }
+      DOM.explanationText.innerHTML = q.explanation ? markdownToHtml(q.explanation) : '';
+      DOM.explanationBox.classList.remove('hidden');
+      DOM.quizAskAiPanel.classList.remove('hidden');
+    } else {
+      // Exam mode: just highlight selected
+      if (optionButtons[answer.selectedIndex]) {
+        optionButtons[answer.selectedIndex].style.borderColor = 'var(--primary)';
+        optionButtons[answer.selectedIndex].style.backgroundColor = 'var(--primary-glow)';
+      }
+    }
+    DOM.nextQBtn.classList.remove('hidden');
+  }
+  // If AI/written and answered — already handled by renderQuestion showing fresh (user can't re-answer)
+}
+
+/**
+ * Skip current question and go to next unanswered, or if all done — enable finish.
+ */
+function skipQuestion() {
+  playSound('click');
+  skippedQuestions.add(currentQuestionIndex);
+
+  // Find next unanswered question
+  const nextUnanswered = findNextUnanswered(currentQuestionIndex);
+  if (nextUnanswered !== -1) {
+    currentQuestionIndex = nextUnanswered;
+    renderQuestion();
+  } else {
+    // All answered or skipped — show finish
+    renderNavBar();
+    DOM.finishQuizBtn.classList.remove('hidden');
+  }
+}
+
+/** Returns index of next unanswered (not in userAnswers) question after start, wrapping around. */
+function findNextUnanswered(startIdx) {
+  const total = filteredQuestions.length;
+  for (let offset = 1; offset < total; offset++) {
+    const idx = (startIdx + offset) % total;
+    const q = filteredQuestions[idx];
+    if (!userAnswers.some(a => a.questionId === q.id)) return idx;
+  }
+  return -1; // all answered
 }
 
 function handleOptionClick(selectedIdx) {
@@ -532,10 +735,11 @@ function handleOptionClick(selectedIdx) {
       DOM.feedbackIcon.textContent = '✗';
     }
     
-    DOM.explanationText.innerHTML = currentQuestion.explanation.replace(/\n/g, '<br>');
+    DOM.explanationText.innerHTML = currentQuestion.explanation ? markdownToHtml(currentQuestion.explanation) : '';
     DOM.explanationBox.classList.remove('hidden');
     DOM.nextQBtn.classList.remove('hidden');
     DOM.quizAskAiPanel.classList.remove('hidden'); // Show Ask AI
+    renderNavBar();
     triggerMathJax();
   } else {
     // EXAM MODE: Highlight selection neutrally, NO hints or AI
@@ -546,6 +750,7 @@ function handleOptionClick(selectedIdx) {
     DOM.nextQBtn.classList.remove('hidden');
     // DO NOT show Ask AI in exam mode — no hints allowed
     DOM.quizAskAiPanel.classList.add('hidden');
+    renderNavBar();
   }
 }
 
@@ -554,10 +759,15 @@ function overrideAsCorrect() {
   score++;
 
   if (userAnswers.length > 0) {
-    userAnswers[userAnswers.length - 1].correct = true;
-    if (userAnswers[userAnswers.length - 1].score !== undefined) {
-      userAnswers[userAnswers.length - 1].score = 100;
+    const lastAns = userAnswers[userAnswers.length - 1];
+    lastAns.correct = true;
+    if (lastAns.score !== undefined) {
+      lastAns.score = 100;
     }
+    lastAns.aiVerdict = 'Зачтено!';
+    lastAns.aiCorrectText = 'Зачтено вручную пользователем.';
+    lastAns.aiMissingText = '—';
+    lastAns.aiCommentText = 'Пользователь переопределил оценку ИИ.';
   }
 
   DOM.aiVerdictBadge.textContent = 'Зачтено!';
@@ -570,12 +780,15 @@ function overrideAsCorrect() {
 
 function goToNextQuestion() {
   playSound('click');
-  currentQuestionIndex++;
-  
-  if (currentQuestionIndex < filteredQuestions.length) {
+  // Go to next unanswered, or just next, or finish
+  const nextUnanswered = findNextUnanswered(currentQuestionIndex);
+  if (nextUnanswered !== -1) {
+    currentQuestionIndex = nextUnanswered;
     renderQuestion();
   } else {
-    finishQuiz();
+    // All answered
+    DOM.finishQuizBtn.classList.remove('hidden');
+    renderNavBar();
   }
 }
 
@@ -620,6 +833,8 @@ function finishQuiz() {
     DOM.resultMode.textContent = 'Экзамен';
   } else if (quizMode === 'ai') {
     DOM.resultMode.textContent = 'Устный ответ (ИИ)';
+  } else if (quizMode === 'written_exam') {
+    DOM.resultMode.textContent = 'Письменный экзамен';
   }
 
   DOM.resultCategory.textContent = getCategoryLabel(activeCategory);
@@ -648,20 +863,41 @@ function finishQuiz() {
     wrongUserAnswers.forEach((answer, idx) => {
       const q = filteredQuestions.find(item => item.id === answer.questionId);
       const card = document.createElement('div');
-      card.className = 'wrong-answer-card';
+      card.className = 'wrong-answer-card tex2jax_process';
       
       if (answer.selectedIndex === -1) {
         // AI Oral Exam response formatting
+        const correctText = answer.aiCorrectText ? markdownToHtml(answer.aiCorrectText) : 'Нет данных';
+        const missingText = answer.aiMissingText ? markdownToHtml(answer.aiMissingText) : 'Нет данных';
+        const commentText = answer.aiCommentText ? markdownToHtml(answer.aiCommentText) : 'Нет комментариев';
+        
         card.innerHTML = `
           <h4>${q.question}</h4>
-          <div class="wrong-answer-choice" style="color: var(--wrong)">❌ Оценка ИИ: <strong>${answer.score}%</strong></div>
-          <div class="wrong-answer-choice" style="color: var(--text-muted); margin-top: 5px;">
-            📝 Ваш ответ:<br>
-            <em style="display:block; padding: 10px; background: hsla(0,0%,0%,0.2); border-radius: var(--radius-sm); margin-top: 5px;">${answer.userAnswerText}</em>
+          <div style="display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap;">
+            <span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); font-size: 0.75rem;">Оценка ИИ: ${answer.score}%</span>
+            <span class="badge" style="background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); font-size: 0.75rem;">${answer.aiVerdict || 'Не зачтено'}</span>
           </div>
-          <p class="reason" style="margin-top: 10px;">
-            📚 Эталонный ответ:<br>
-            <span class="tex2jax_process">${q.explanation.replace(/\n/g, '<br>')}</span>
+          <div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05);">
+            <strong style="color:var(--text-secondary); font-size:0.85rem;">📝 Ваш ответ:</strong>
+            <p style="margin-top: 5px; font-style: italic; color: var(--text-muted); font-size:0.9rem;">${answer.userAnswerText}</p>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px; font-size:0.88rem;">
+            <div style="border-left: 2px solid var(--correct); padding-left: 10px;">
+              <strong style="color:var(--correct);">✓ Что отвечено правильно:</strong>
+              <p style="margin-top: 2px; color: var(--text-secondary);">${correctText}</p>
+            </div>
+            <div style="border-left: 2px solid var(--wrong); padding-left: 10px;">
+              <strong style="color:var(--wrong);">✗ Что упущено или требует доработки:</strong>
+              <p style="margin-top: 2px; color: var(--text-secondary);">${missingText}</p>
+            </div>
+            <div style="border-left: 2px solid var(--primary); padding-left: 10px;">
+              <strong style="color:var(--primary-hover);">💬 Комментарий экзаменатора:</strong>
+              <p style="margin-top: 2px; color: var(--text-secondary);">${commentText}</p>
+            </div>
+          </div>
+          <p class="reason" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px;">
+            <strong>📚 Эталонный академический ответ:</strong><br>
+            <span>${q.explanation ? markdownToHtml(q.explanation) : ''}</span>
           </p>
         `;
       } else {
@@ -670,7 +906,7 @@ function finishQuiz() {
           <h4>${q.question}</h4>
           <div class="wrong-answer-choice">❌ Ваш ответ: <strong>${q.options[answer.selectedIndex]}</strong></div>
           <div class="correct-answer-choice">✓ Правильный ответ: <strong>${q.options[q.correctIndex]}</strong></div>
-          <p class="reason">${q.explanation.replace(/\n/g, '<br>')}</p>
+          <p class="reason">${q.explanation ? markdownToHtml(q.explanation) : ''}</p>
         `;
       }
 
@@ -848,7 +1084,11 @@ function checkAnswerWithAI() {
       selectedIndex: -1, // indicating text reply
       correct: isCorrect,
       score: scoreVal,
-      userAnswerText: answerText
+      userAnswerText: answerText,
+      aiCorrectText: data.what_is_correct || '',
+      aiMissingText: data.what_is_missing || '',
+      aiCommentText: data.explanation || '',
+      aiVerdict: verdictText
     });
 
     // Sound feedback
@@ -873,12 +1113,12 @@ function checkAnswerWithAI() {
     }
 
     // Populate details (with protection against XSS but allowing linebreaks and math)
-    DOM.aiCorrectText.innerHTML = (data.what_is_correct || "Нет данных").replace(/\n/g, '<br>');
-    DOM.aiMissingText.innerHTML = (data.what_is_missing || "Нет данных").replace(/\n/g, '<br>');
-    DOM.aiCommentText.innerHTML = (data.explanation || "Нет комментариев").replace(/\n/g, '<br>');
+    DOM.aiCorrectText.innerHTML = data.what_is_correct ? markdownToHtml(data.what_is_correct) : 'Нет данных';
+    DOM.aiMissingText.innerHTML = data.what_is_missing ? markdownToHtml(data.what_is_missing) : 'Нет данных';
+    DOM.aiCommentText.innerHTML = data.explanation ? markdownToHtml(data.explanation) : 'Нет комментариев';
 
     // Populate academic etalon
-    DOM.academicAnswerText.innerHTML = currentQuestion.explanation.replace(/\n/g, '<br>');
+    DOM.academicAnswerText.innerHTML = currentQuestion.explanation ? markdownToHtml(currentQuestion.explanation) : '';
 
     // Show result card
     DOM.aiResultBox.classList.remove('hidden');
@@ -900,7 +1140,11 @@ function checkAnswerWithAI() {
       selectedIndex: -1,
       correct: false,
       score: 0,
-      userAnswerText: answerText
+      userAnswerText: answerText,
+      aiCorrectText: 'Не удалось завершить автоматическую проверку ИИ.',
+      aiMissingText: error.message || 'Возможно, отсутствует подключение к сети или не задан API-ключ в переменных окружения.',
+      aiCommentText: 'Вы можете продолжить тест, нажав кнопку «Дальше» или принудительно засчитать ответ.',
+      aiVerdict: 'Ошибка'
     });
 
     // Populate with error info
@@ -958,8 +1202,8 @@ function renderStudyQuestions() {
   if (searchVal) {
     rawList = rawList.filter(q => {
       const questionMatch = q.question.toLowerCase().includes(searchVal);
-      const explanationMatch = q.explanation.toLowerCase().includes(searchVal);
-      const optionsMatch = q.options.some(opt => opt.toLowerCase().includes(searchVal));
+      const explanationMatch = (q.explanation || '').toLowerCase().includes(searchVal);
+      const optionsMatch = Array.isArray(q.options) && q.options.some(opt => opt.toLowerCase().includes(searchVal));
       return questionMatch || explanationMatch || optionsMatch;
     });
   }
@@ -1003,7 +1247,7 @@ function renderStudyQuestions() {
       </div>
       <p class="reason" style="margin-top: 10px; border-top: 1px solid var(--card-border); padding-top: 15px; color: var(--text-muted); font-size: 0.9rem; line-height: 1.6;">
         <strong>📚 Разбор решения:</strong><br>
-        <span class="tex2jax_process">${q.explanation.replace(/\n/g, '<br>')}</span>
+        <span class="tex2jax_process">${q.explanation ? markdownToHtml(q.explanation) : ''}</span>
       </p>
       
       <!-- AI Question Section -->
@@ -1245,7 +1489,6 @@ function quizAskAI() {
       userQuestion: userQuestion
     })
   })
-
     .then(response => {
       if (!response.ok) {
         return response.json().catch(() => ({})).then(d => {
@@ -1258,7 +1501,6 @@ function quizAskAI() {
       DOM.quizAiLoading.classList.add('hidden');
       DOM.quizAiSendBtn.disabled = false;
       DOM.quizAiInput.disabled = false;
-
       const answerText = data.answer || 'Не удалось получить ответ ИИ.';
       DOM.quizAiResponse.innerHTML = `
         <strong>🤖 Ответ ИИ-ассистента:</strong>
@@ -1278,9 +1520,7 @@ function quizAskAI() {
 
 
 /**
- * Lightweight Markdown → HTML converter for AI responses.
- * Handles: headings (#, ##, ###), bold, italic, inline-code, code-blocks,
- * unordered lists (-, *), horizontal rules, and paragraphs.
+ * Lightweight Markdown → HTML converter with $$...$$ math block support.
  */
 function markdownToHtml(md) {
   if (!md) return '';
@@ -1289,39 +1529,124 @@ function markdownToHtml(md) {
   const output = [];
   let inList = false;
   let inCodeBlock = false;
-  let codeLang = '';
+  let inMathBlock = false;
+  let inTable = false;
+  let tableRows = [];
   let codeLines = [];
+  let mathLines = [];
 
   const closeList = () => {
     if (inList) { output.push('</ul>'); inList = false; }
   };
 
+  const closeTable = () => {
+    if (inTable && tableRows.length > 0) {
+      let tableHtml = '<div class="ai-table-container"><table class="ai-table">';
+      const isSeparator = (rowText) => {
+        return /^[|\s:-]+$/.test(rowText) && rowText.includes('-');
+      };
+      
+      let hasHeader = false;
+      let bodyRows = [];
+      let headerCells = [];
+      
+      tableRows.forEach((row, rIdx) => {
+        let cleanRow = row.trim();
+        if (cleanRow.startsWith('|')) cleanRow = cleanRow.slice(1);
+        if (cleanRow.endsWith('|')) cleanRow = cleanRow.slice(0, -1);
+        
+        const cells = cleanRow.split('|').map(c => c.trim());
+        
+        if (rIdx === 0) {
+          headerCells = cells;
+          hasHeader = true;
+        } else if (isSeparator(row)) {
+          // skip separator row
+        } else {
+          bodyRows.push(cells);
+        }
+      });
+      
+      if (hasHeader) {
+        tableHtml += '<thead><tr>';
+        headerCells.forEach(cell => {
+          tableHtml += `<th>${processInline(cell)}</th>`;
+        });
+        tableHtml += '</tr></thead>';
+      }
+      
+      tableHtml += '<tbody>';
+      bodyRows.forEach(cells => {
+        tableHtml += '<tr>';
+        cells.forEach(cell => {
+          tableHtml += `<td>${processInline(cell)}</td>`;
+        });
+        tableHtml += '</tr>';
+      });
+      tableHtml += '</tbody></table></div>';
+      
+      output.push(tableHtml);
+      inTable = false;
+      tableRows = [];
+    }
+  };
+
   const processInline = (text) => {
-    // Escape HTML first
+    // Preserve inline math $...$ by replacing with placeholders first
+    const mathPlaceholders = [];
+    text = text.replace(/\$([^$\n]+?)\$/g, (match) => {
+      mathPlaceholders.push(match);
+      return `\x00MATH${mathPlaceholders.length - 1}\x00`;
+    });
+
+    // Escape HTML
     text = text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    // Bold+italic
+
+    // Bold+italic, bold, italic, inline code
     text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    // Bold
     text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Italic
     text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    // Inline code
     text = text.replace(/`([^`]+)`/g, '<code class="ai-code-inline">$1</code>');
+
+    // Restore inline math placeholders (no HTML escaping inside)
+    text = text.replace(/\x00MATH(\d+)\x00/g, (_, idx) => mathPlaceholders[parseInt(idx)]);
+
     return text;
   };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const trimmed = line.trim();
 
-    // Code block fence
-    if (line.trim().startsWith('```')) {
+    // Display math block $$...$$
+    if (trimmed === '$$') {
+      if (!inMathBlock) {
+        closeList();
+        closeTable();
+        inMathBlock = true;
+        mathLines = [];
+      } else {
+        inMathBlock = false;
+        // Emit as a single block that MathJax can process
+        output.push(`<div class="ai-math-block">$$${mathLines.join('\n')}$$</div>`);
+        mathLines = [];
+      }
+      continue;
+    }
+    if (inMathBlock) {
+      mathLines.push(line);
+      continue;
+    }
+
+    // Code block fence ```
+    if (trimmed.startsWith('```')) {
       if (!inCodeBlock) {
         closeList();
+        closeTable();
         inCodeBlock = true;
-        codeLang = line.trim().slice(3).trim();
         codeLines = [];
       } else {
         inCodeBlock = false;
@@ -1332,17 +1657,23 @@ function markdownToHtml(md) {
       }
       continue;
     }
-
     if (inCodeBlock) {
       codeLines.push(line);
       continue;
     }
 
-    // Horizontal rule
-    if (/^(---|___|||\*\*\*)\s*$/.test(line.trim())) {
+    // Markdown Table check
+    const isTableRow = trimmed.startsWith('|') && trimmed.endsWith('|');
+    if (isTableRow) {
       closeList();
-      output.push('<hr class="ai-hr">');
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+      tableRows.push(line);
       continue;
+    } else {
+      closeTable();
     }
 
     // Headings
@@ -1382,5 +1713,687 @@ function markdownToHtml(md) {
   }
 
   closeList();
+  closeTable();
   return output.join('\n');
 }
+
+/* ==========================================================================
+   CONSTRUCTOR MODE
+   ========================================================================== */
+
+/**
+ * Render the checklist of questions in the constructor screen,
+ * filtered by the currently active category.
+ */
+function renderConstructorList() {
+  const list = DOM.constructorList;
+  list.innerHTML = '';
+
+  const searchVal = DOM.constrSearchInput.value.toLowerCase().trim();
+
+  let pool = activeConstrCategory === 'all'
+    ? questions
+    : questions.filter(q => q.category === activeConstrCategory);
+
+  if (searchVal) {
+    pool = pool.filter(q => {
+      const qMatch = q.question.toLowerCase().includes(searchVal);
+      const eMatch = (q.explanation || '').toLowerCase().includes(searchVal);
+      const oMatch = Array.isArray(q.options) && q.options.some(o => o.toLowerCase().includes(searchVal));
+      return qMatch || eMatch || oMatch;
+    });
+  }
+
+  const catLabels = { general: 'Общие ИТ/ИБ', ai: 'ИИ', practical: 'Практика' };
+
+  if (pool.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">🔍 Вопросы не найдены</p>';
+    updateConstrCount();
+    return;
+  }
+
+  pool.forEach(q => {
+    const row = document.createElement('label');
+    row.className = 'constr-row';
+    const isChecked = selectedConstrIds.has(q.id);
+    row.innerHTML = `
+      <input type="checkbox" class="constr-checkbox" data-id="${q.id}" data-cat="${q.category}" ${isChecked ? 'checked' : ''} />
+      <span class="constr-badge">${catLabels[q.category] || q.category}</span>
+      <span class="constr-question-text">${q.id}. ${q.question}</span>
+    `;
+    const cb = row.querySelector('.constr-checkbox');
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        selectedConstrIds.add(q.id);
+      } else {
+        selectedConstrIds.delete(q.id);
+      }
+      updateConstrCount();
+    });
+    list.appendChild(row);
+  });
+
+  updateConstrCount();
+}
+
+/** Update the "N выбрано" badge */
+function updateConstrCount() {
+  const count = selectedConstrIds.size;
+  DOM.constrCountBadge.textContent = `${count} выбрано`;
+  DOM.constructorBuildBtn.disabled = count === 0;
+}
+
+/**
+ * Build the result screen showing selected questions with correct answers.
+ */
+function buildConstructorResult() {
+  const selectedIds = [...selectedConstrIds];
+
+  if (selectedIds.length === 0) {
+    alert('Выберите хотя бы один вопрос!');
+    return;
+  }
+
+  playSound('click');
+
+  const selectedQuestions = questions.filter(q => selectedIds.includes(q.id));
+  const catLabels = { general: 'Общие ИТ/ИБ', ai: 'ИИ', practical: 'Практика' };
+
+  DOM.constrResultSubtitle.textContent = `Подборка из ${selectedQuestions.length} вопроса(-ов)`;
+  DOM.constructorResultList.innerHTML = '';
+
+  selectedQuestions.forEach((q, idx) => {
+    const card = document.createElement('div');
+    card.className = 'study-card';
+    card.style.border = '1px solid rgba(167,139,250,0.25)';
+
+    // Build options list (if available)
+    let optionsHtml = '';
+    if (Array.isArray(q.options)) {
+      optionsHtml = '<div class="constr-options-list">' +
+        q.options.map((opt, i) => {
+          const isCorrect = i === q.correctIndex;
+          return `<div class="study-option${isCorrect ? ' correct' : ''}">
+            <span class="option-indicator">${String.fromCharCode(65 + i)}</span>
+            <span>${opt}</span>
+            ${isCorrect ? '<span style="margin-left:auto; color:var(--correct); font-weight:700;">✓</span>' : ''}
+          </div>`;
+        }).join('') +
+      '</div>';
+    }
+
+    card.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <span class="badge">${catLabels[q.category] || q.category}</span>
+        <span style="color:var(--text-muted); font-size:0.85rem;">Вопрос №${q.id}</span>
+      </div>
+      <h3 class="tex2jax_process" style="font-size:1rem; font-weight:700; margin-bottom:14px; line-height:1.5;">
+        ${q.question}
+      </h3>
+      ${optionsHtml}
+      <div class="study-explanation tex2jax_process" style="margin-top:12px;">
+        <strong style="color:var(--correct);">✓ Правильный ответ:</strong>
+        <p style="margin-top:6px;">${q.explanation ? markdownToHtml(q.explanation) : ''}</p>
+      </div>
+    `;
+    // --- Ask AI panel ---
+    const aiPanelId = `constr-ai-${q.id}`;
+    const aiPanel = document.createElement('div');
+    aiPanel.className = 'quiz-ask-ai-panel';
+    aiPanel.style.marginTop = '14px';
+    aiPanel.innerHTML = `
+      <button class="quiz-ask-ai-toggle" onclick="toggleResAiPanel('${aiPanelId}')">
+        <span>🤖 Спросить ИИ про этот вопрос</span>
+        <span id="${aiPanelId}-arrow" class="ask-ai-arrow">▸</span>
+      </button>
+      <div id="${aiPanelId}-body" class="quiz-ask-ai-body collapsed">
+        <div class="quiz-ai-input-row">
+          <input id="${aiPanelId}-input" type="text" class="quiz-ai-input"
+            placeholder="Задайте вопрос ИИ по данной теме..." />
+          <button class="btn primary-btn quiz-ai-send-btn"
+            onclick="sendResAiQuestion('${aiPanelId}', ${q.id})">Спросить</button>
+        </div>
+        <div id="${aiPanelId}-loading" class="study-ai-loading hidden">
+          <span class="study-ai-spinner"></span> ИИ думает...
+        </div>
+        <div id="${aiPanelId}-response" class="quiz-ai-response hidden"></div>
+      </div>
+    `;
+    card.appendChild(aiPanel);
+
+    DOM.constructorResultList.appendChild(card);
+  });
+
+  triggerMathJax();
+  showScreen(DOM.constructorResultScreen);
+}
+
+/**
+ * Export the selected questions to PDF via a clean print window.
+ * Opens a new tab with styled HTML and auto-triggers browser print dialog.
+ */
+function exportConstructorToPDF() {
+  const selectedIds = [...selectedConstrIds];
+  if (selectedIds.length === 0) {
+    alert('Нет выбранных вопросов для экспорта.');
+    return;
+  }
+
+  const selectedQuestions = questions.filter(q => selectedIds.includes(q.id));
+  const catLabels = { general: 'Общие ИТ/ИБ темы', ai: 'Искусственный интеллект', practical: 'Практические задачи' };
+  const dateStr = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  let questionsHtml = '';
+  selectedQuestions.forEach((q, idx) => {
+    let optionsHtml = '';
+    if (Array.isArray(q.options)) {
+      optionsHtml = q.options.map((opt, i) => {
+        const isCorrect = i === q.correctIndex;
+        return `<div class="opt ${isCorrect ? 'opt-correct' : ''}">
+          <span class="opt-letter">${String.fromCharCode(65 + i)}.</span>
+          <span class="opt-text">${opt}</span>
+          ${isCorrect ? '<span class="opt-check">✓</span>' : ''}
+        </div>`;
+      }).join('');
+    }
+
+    const explanation = q.explanation ? markdownToHtml(q.explanation) : '';
+
+    // Capture AI response from DOM if user asked a question
+    const aiPanelId = `constr-ai-${q.id}`;
+    const aiResponseEl = document.getElementById(`${aiPanelId}-response`);
+    const aiInputEl = document.getElementById(`${aiPanelId}-input`);
+    let aiHtml = '';
+    if (aiResponseEl && !aiResponseEl.classList.contains('hidden') && aiResponseEl.innerHTML.trim()) {
+      const userQ = aiInputEl ? aiInputEl.value.trim() : '';
+      aiHtml = `
+        <div class="q-ai-block">
+          <div class="q-ai-title">🤖 Ответ ИИ-ассистента</div>
+          ${userQ ? `<div class="q-ai-question">Вопрос: <em>${userQ}</em></div>` : ''}
+          <div class="q-ai-body">${aiResponseEl.innerHTML}</div>
+        </div>`;
+    }
+
+    questionsHtml += `
+      <div class="q-block">
+        <div class="q-meta">
+          <span class="q-num">Вопрос ${idx + 1}</span>
+          <span class="q-cat">${catLabels[q.category] || q.category}</span>
+        </div>
+        <div class="q-text">${q.question}</div>
+        ${optionsHtml ? `<div class="q-options">${optionsHtml}</div>` : ''}
+        <div class="q-answer">
+          <strong>Правильный ответ:</strong>
+          <div class="q-explanation">${explanation}</div>
+        </div>
+        ${aiHtml}
+      </div>
+    `;
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Подборка вопросов — ${dateStr}</title>
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$','$'],['\\\\(','\\\\)']] } };
+  <\/script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"><\/script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      color: #1a1a2e;
+      padding: 20mm 18mm;
+      line-height: 1.6;
+    }
+    /* Markdown Styles for PDF */
+    .ai-p { margin: 4px 0; }
+    .ai-h3 { font-size: 11pt; font-weight: 700; margin: 12px 0 4px; color: #7c3aed; }
+    .ai-h2 { font-size: 12pt; font-weight: 700; margin: 14px 0 6px; color: #7c3aed; }
+    .ai-h1 { font-size: 13pt; font-weight: 700; margin: 16px 0 8px; color: #7c3aed; }
+    .ai-list { margin: 6px 0 6px 20px; padding-left: 6px; }
+    .ai-list li { margin: 3px 0; }
+    .ai-code-inline { background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); padding: 1px 4px; border-radius: 4px; font-family: monospace; font-size: 9.5pt; }
+    .ai-code-block { background: #f3f4f6; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin: 8px 0; font-family: monospace; font-size: 9pt; white-space: pre-wrap; }
+    .ai-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9.5pt; background: #f9f9fb; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
+    .ai-table th, .ai-table td { padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: left; }
+    .ai-table th { background: #ede9fe; color: #5b21b6; font-weight: 700; }
+    .ai-table tr:hover { background: #f3f4f6; }
+    .pdf-header {
+      border-bottom: 2px solid #7c3aed;
+      padding-bottom: 10px;
+      margin-bottom: 24px;
+    }
+    .pdf-header h1 { font-size: 16pt; color: #7c3aed; }
+    .pdf-header p { font-size: 9pt; color: #555; margin-top: 4px; }
+    .q-block {
+      margin-bottom: 22px;
+      padding: 14px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      page-break-inside: avoid;
+    }
+    .q-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .q-num {
+      font-weight: 700;
+      font-size: 9pt;
+      color: #7c3aed;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .q-cat {
+      font-size: 8.5pt;
+      background: #ede9fe;
+      color: #5b21b6;
+      border-radius: 20px;
+      padding: 1px 8px;
+    }
+    .q-text {
+      font-size: 11pt;
+      font-weight: 600;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .q-options { margin-bottom: 10px; }
+    .opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 10pt;
+      margin-bottom: 3px;
+    }
+    .opt-correct {
+      background: #dcfce7;
+      font-weight: 600;
+    }
+    .opt-letter { color: #6b7280; font-weight: 700; min-width: 16px; }
+    .opt-check { color: #16a34a; font-weight: 900; margin-left: auto; }
+    .q-answer {
+      background: #f5f3ff;
+      border-left: 3px solid #7c3aed;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 10pt;
+    }
+    .q-answer strong { color: #5b21b6; }
+    .q-explanation { margin-top: 4px; color: #374151; line-height: 1.5; }
+    .q-ai-block {
+      margin-top: 10px;
+      background: #ecfdf5;
+      border-left: 3px solid #059669;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 10pt;
+    }
+    .q-ai-title {
+      font-weight: 700;
+      color: #047857;
+      margin-bottom: 4px;
+      font-size: 9.5pt;
+    }
+    .q-ai-question {
+      color: #374151;
+      font-size: 9pt;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px dashed #a7f3d0;
+    }
+    .q-ai-body { color: #1f2937; line-height: 1.55; }
+    .q-ai-body strong { color: #065f46; }
+    .q-ai-body em { color: #047857; }
+    .q-ai-body ul, .q-ai-body ol { margin: 4px 0 4px 18px; }
+    .pdf-footer {
+      margin-top: 30px;
+      border-top: 1px solid #ccc;
+      padding-top: 8px;
+      font-size: 8pt;
+      color: #888;
+      text-align: center;
+    }
+    @media print {
+      body { padding: 15mm 14mm; }
+      .q-block { break-inside: avoid; }
+      @page { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="pdf-header">
+    <h1>📚 Подборка вопросов к государственному экзамену</h1>
+    <p>Сформировано: ${dateStr} &nbsp;|&nbsp; Вопросов: ${selectedQuestions.length}</p>
+  </div>
+  ${questionsHtml}
+  <div class="pdf-footer">Сформировано автоматически системой подготовки к госэкзамену</div>
+  <script>
+    // Wait for MathJax then print
+    if (window.MathJax) {
+      MathJax.startup.promise.then(() => { window.print(); });
+    } else {
+      setTimeout(() => window.print(), 1200);
+    }
+  <\/script>
+</body>
+</html>`;
+
+  const printWin = window.open('', '_blank');
+  printWin.document.write(html);
+  printWin.document.close();
+}
+
+/**
+ * Export the completed quiz results to PDF via a clean print window.
+ */
+function exportQuizToPDF() {
+  if (userAnswers.length === 0) {
+    alert('Нет результатов ответов для экспорта.');
+    return;
+  }
+
+  const dateStr = new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timeStr = formatTime(totalTimeTaken);
+  const correctCount = score;
+  const totalCount = filteredQuestions.length;
+  const percentage = Math.round((correctCount / totalCount) * 100);
+  const verdictText = getScoreVerdict(percentage);
+
+  let modeText = 'Тренировка';
+  if (quizMode === 'exam') modeText = 'Экзамен';
+  else if (quizMode === 'ai') modeText = 'Устный ответ (ИИ)';
+  else if (quizMode === 'written_exam') modeText = 'Письменный экзамен';
+
+  const catText = getCategoryLabel(activeCategory);
+
+  let questionsHtml = '';
+  filteredQuestions.forEach((q, idx) => {
+    const ans = userAnswers.find(a => a.questionId === q.id);
+    let userAnsHtml = '';
+    let statusBadge = '';
+
+    if (!ans) {
+      statusBadge = `<span class="badge badge-skip">Пропущено</span>`;
+      userAnsHtml = `<div class="ans-block skipped">Вопрос был пропущен без ответа.</div>`;
+    } else if (ans.selectedIndex === -1) {
+      // AI oral question
+      statusBadge = ans.correct 
+        ? `<span class="badge badge-correct">Зачтено (${ans.score}%)</span>` 
+        : `<span class="badge badge-wrong">Не зачтено (${ans.score}%)</span>`;
+
+      const correctText = ans.aiCorrectText ? markdownToHtml(ans.aiCorrectText) : '—';
+      const missingText = ans.aiMissingText ? markdownToHtml(ans.aiMissingText) : '—';
+      const commentText = ans.aiCommentText ? markdownToHtml(ans.aiCommentText) : '—';
+
+      userAnsHtml = `
+        <div class="ans-block oral">
+          <div class="user-typed-ans">
+            <strong>Ваш ответ:</strong>
+            <p><em>${ans.userAnswerText || '(пустой ответ)'}</em></p>
+          </div>
+          <div class="ai-assessment-details">
+            <div class="assessment-item correct">
+              <strong>✓ Что отвечено правильно:</strong>
+              <p>${correctText}</p>
+            </div>
+            <div class="assessment-item missing">
+              <strong>✗ Что упущено или требует доработки:</strong>
+              <p>${missingText}</p>
+            </div>
+            <div class="assessment-item comment">
+              <strong>💬 Комментарий экзаменатора:</strong>
+              <p>${commentText}</p>
+            </div>
+          </div>
+        </div>`;
+    } else {
+      // Multiple-choice question
+      statusBadge = ans.correct 
+        ? `<span class="badge badge-correct">Правильно</span>` 
+        : `<span class="badge badge-wrong">Неправильно</span>`;
+
+      let optionsHtml = '';
+      if (Array.isArray(q.options)) {
+        optionsHtml = q.options.map((opt, i) => {
+          const isUserChoice = i === ans.selectedIndex;
+          const isCorrect = i === q.correctIndex;
+          let optClass = '';
+          if (isCorrect) optClass = 'opt-correct';
+          else if (isUserChoice) optClass = 'opt-wrong';
+
+          return `<div class="opt ${optClass}">
+            <span class="opt-letter">${String.fromCharCode(65 + i)}.</span>
+            <span class="opt-text">${opt}</span>
+            ${isCorrect ? '<span class="opt-check">✓</span>' : ''}
+            ${isUserChoice && !isCorrect ? '<span class="opt-cross">✗</span>' : ''}
+          </div>`;
+        }).join('');
+      }
+      userAnsHtml = `<div class="q-options">${optionsHtml}</div>`;
+    }
+
+    const explanation = q.explanation ? markdownToHtml(q.explanation) : '';
+
+    questionsHtml += `
+      <div class="q-block">
+        <div class="q-meta">
+          <span class="q-num">Вопрос ${idx + 1}</span>
+          <span class="q-cat">${getCategoryLabel(q.category)}</span>
+          ${statusBadge}
+        </div>
+        <div class="q-text">${q.question}</div>
+        ${userAnsHtml}
+        <div class="q-answer">
+          <strong>Решение / Разбор:</strong>
+          <div class="q-explanation">${explanation}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Отчет о результатах тестирования — ${dateStr}</title>
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$','$'],['\\\\(','\\\\)']] } };
+  <\/script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"><\/script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 10.5pt;
+      color: #1a1a2e;
+      padding: 20mm 18mm;
+      line-height: 1.5;
+    }
+    /* Markdown Styles for PDF */
+    .ai-p { margin: 4px 0; }
+    .ai-h3 { font-size: 10.5pt; font-weight: 700; margin: 12px 0 4px; color: #7c3aed; }
+    .ai-h2 { font-size: 11.5pt; font-weight: 700; margin: 14px 0 6px; color: #7c3aed; }
+    .ai-h1 { font-size: 12.5pt; font-weight: 700; margin: 16px 0 8px; color: #7c3aed; }
+    .ai-list { margin: 6px 0 6px 20px; padding-left: 6px; }
+    .ai-list li { margin: 3px 0; }
+    .ai-code-inline { background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); padding: 1px 4px; border-radius: 4px; font-family: monospace; font-size: 9.5pt; }
+    .ai-code-block { background: #f3f4f6; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin: 8px 0; font-family: monospace; font-size: 9pt; white-space: pre-wrap; }
+    .ai-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9.5pt; background: #f9f9fb; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
+    .ai-table th, .ai-table td { padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: left; }
+    .ai-table th { background: #ede9fe; color: #5b21b6; font-weight: 700; }
+    .ai-table tr:hover { background: #f3f4f6; }
+    .pdf-header {
+      border-bottom: 2px solid #7c3aed;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .pdf-header h1 { font-size: 15pt; color: #7c3aed; }
+    .pdf-stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 8px;
+      font-size: 8.5pt;
+      color: #555;
+    }
+    .stat-badge {
+      background: #f3f4f6;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #e5e7eb;
+    }
+    .q-block {
+      margin-bottom: 22px;
+      padding: 14px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      page-break-inside: avoid;
+    }
+    .q-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .q-num {
+      font-weight: 700;
+      font-size: 8.5pt;
+      color: #7c3aed;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .q-cat {
+      font-size: 8pt;
+      background: #ede9fe;
+      color: #5b21b6;
+      border-radius: 20px;
+      padding: 1px 8px;
+    }
+    .badge {
+      font-size: 8pt;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-left: auto;
+    }
+    .badge-correct { background: #dcfce7; color: #16a34a; }
+    .badge-wrong { background: #fee2e2; color: #dc2626; }
+    .badge-skip { background: #fef3c7; color: #d97706; }
+    .q-text {
+      font-size: 10.5pt;
+      font-weight: 600;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .ans-block {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 9.5pt;
+    }
+    .ans-block.skipped { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; }
+    .user-typed-ans {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .user-typed-ans strong { color: #4b5563; font-size: 8.5pt; }
+    .user-typed-ans p { font-style: italic; color: #374151; margin-top: 2px; }
+    .ai-assessment-details {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .assessment-item {
+      border-left: 2px solid #ccc;
+      padding-left: 8px;
+      margin-left: 2px;
+    }
+    .assessment-item.correct { border-left-color: #10b981; }
+    .assessment-item.correct strong { color: #047857; font-size: 8.5pt; }
+    .assessment-item.missing { border-left-color: #ef4444; }
+    .assessment-item.missing strong { color: #b91c1c; font-size: 8.5pt; }
+    .assessment-item.comment { border-left-color: #6366f1; }
+    .assessment-item.comment strong { color: #4338ca; font-size: 8.5pt; }
+    .assessment-item p { font-size: 9pt; color: #1f2937; margin-top: 1px; }
+    
+    .q-options { margin-bottom: 10px; }
+    .opt {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 5px;
+      font-size: 9.5pt;
+      margin-bottom: 3px;
+    }
+    .opt-correct { background: #dcfce7; font-weight: 600; }
+    .opt-wrong { background: #fee2e2; }
+    .opt-letter { color: #6b7280; font-weight: 700; min-width: 16px; }
+    .opt-check { color: #16a34a; font-weight: 900; margin-left: auto; }
+    .opt-cross { color: #dc2626; font-weight: 900; margin-left: auto; }
+    
+    .q-answer {
+      background: #f5f3ff;
+      border-left: 3px solid #7c3aed;
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 9.5pt;
+      margin-top: 10px;
+    }
+    .q-answer strong { color: #5b21b6; }
+    .q-explanation { margin-top: 4px; color: #374151; line-height: 1.45; }
+    
+    .pdf-footer {
+      margin-top: 24px;
+      border-top: 1px solid #ccc;
+      padding-top: 8px;
+      font-size: 8pt;
+      color: #888;
+      text-align: center;
+    }
+    @media print {
+      body { padding: 15mm 14mm; }
+      .q-block { break-inside: avoid; }
+      @page { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="pdf-header">
+    <h1>📊 Отчет о результатах тестирования</h1>
+    <div class="pdf-stats-row">
+      <span class="stat-badge">Дата: <strong>${dateStr}</strong></span>
+      <span class="stat-badge">Режим: <strong>${modeText}</strong></span>
+      <span class="stat-badge">Раздел: <strong>${catText}</strong></span>
+      <span class="stat-badge">Время: <strong>${timeStr}</strong></span>
+      <span class="stat-badge">Баллы: <strong>${correctCount} / ${totalCount} (${percentage}%)</strong></span>
+      <span class="stat-badge">Вердикт: <strong>${verdictText}</strong></span>
+    </div>
+  </div>
+  ${questionsHtml}
+  <div class="pdf-footer">Сформировано автоматически системой подготовки к госэкзамену</div>
+  <script>
+    if (window.MathJax) {
+      MathJax.startup.promise.then(() => { window.print(); });
+    } else {
+      setTimeout(() => window.print(), 1200);
+    }
+  <\/script>
+</body>
+</html>`;
+
+  const printWin = window.open('', '_blank');
+  printWin.document.write(html);
+  printWin.document.close();
+}
+

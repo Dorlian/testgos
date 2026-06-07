@@ -85,6 +85,14 @@
               </div>
             </label>
             <label class="radio-label">
+              <input type="radio" name="quiz-mode" value="written_exam">
+              <span class="radio-custom"></span>
+              <div>
+                <strong>Письменный экзамен</strong>
+                <span>3 случайных вопроса (1 из каждого раздела). Пишите ответ текстом — ИИ оценивает сразу после каждого вопроса.</span>
+              </div>
+            </label>
+            <label class="radio-label">
               <input type="radio" name="quiz-mode" value="ai">
               <span class="radio-custom"></span>
               <div>
@@ -110,6 +118,58 @@
       <div class="action-bar" style="justify-content: center; gap: 15px; flex-wrap: wrap;">
         <button id="start-quiz-btn" class="btn primary-btn large-btn">Начать тестирование</button>
         <button id="study-mode-btn" class="btn secondary-btn large-btn">🎓 Обучение (Все ответы)</button>
+        <button id="constructor-mode-btn" class="btn secondary-btn large-btn">📝 Конструктор вопросов</button>
+      </div>
+    </section>
+
+    <!-- Constructor Screen -->
+    <section id="constructor-screen" class="glass-card">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <span class="hero-badge">📝 Конструктор</span>
+      </div>
+      <h2 style="font-size:1.5rem; margin-bottom:4px;">Конструктор подборки</h2>
+      <p style="color:var(--text-muted); font-size:0.92rem; margin-bottom:16px;">Выберите нужные вопросы и нажмите «Сформировать» — система покажет их с ответами.</p>
+
+      <!-- Filters + Controls -->
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+        <button class="filter-btn constr-filter active" data-constr-cat="all">Все (49)</button>
+        <button class="filter-btn constr-filter" data-constr-cat="general">Общие (25)</button>
+        <button class="filter-btn constr-filter" data-constr-cat="ai">ИИ (17)</button>
+        <button class="filter-btn constr-filter" data-constr-cat="practical">Практика (7)</button>
+        <button id="constr-select-all" class="btn secondary-btn" style="padding:6px 14px;font-size:0.82rem;">☑ Выбрать все</button>
+        <button id="constr-deselect-all" class="btn secondary-btn" style="padding:6px 14px;font-size:0.82rem;">☐ Снять все</button>
+        <span id="constr-count-badge" style="margin-left:auto; color:var(--primary); font-weight:600; font-size:0.9rem;">0 выбрано</span>
+      </div>
+
+      <!-- Search bar for constructor -->
+      <div style="margin-bottom:10px;">
+        <input type="text" id="constr-search-input"
+          placeholder="🔍 Поиск по вопросам и ответам..."
+          style="width:100%; padding:10px 16px; border-radius:var(--radius-md); border:1px solid var(--card-border); background:hsla(0,0%,0%,0.15); color:var(--text-main); font-family:var(--font-main); font-size:0.92rem; outline:none; box-sizing:border-box;" />
+      </div>
+
+      <!-- Question Checklist -->
+      <div id="constructor-list" style="display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; padding-right:4px;"></div>
+
+      <!-- Action bar -->
+      <div class="action-bar" style="margin-top:20px; gap:14px; flex-wrap:wrap;">
+        <button id="constructor-back-btn" class="btn secondary-btn">Вернуться</button>
+        <button id="constructor-build-btn" class="btn primary-btn large-btn">📚 Сформировать подборку</button>
+      </div>
+    </section>
+
+    <!-- Constructor Result Screen -->
+    <section id="constructor-result-screen" class="glass-card">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <span class="hero-badge">📚 Подборка</span>
+      </div>
+      <h2 style="font-size:1.4rem; margin-bottom:4px;">Выбранные вопросы с ответами</h2>
+      <p id="constr-result-subtitle" style="color:var(--text-muted); font-size:0.9rem; margin-bottom:16px;"></p>
+      <div id="constructor-result-list" style="display:flex; flex-direction:column; gap:20px;"></div>
+      <div class="action-bar" style="margin-top:24px; gap:14px; flex-wrap:wrap;">
+        <button id="constructor-result-back-btn" class="btn secondary-btn">Назад к выбору</button>
+        <button id="constructor-result-home-btn" class="btn secondary-btn">🏠 На главную</button>
+        <button id="constructor-export-pdf-btn" class="btn primary-btn">📄 Скачать PDF</button>
       </div>
     </section>
 
@@ -132,6 +192,9 @@
       <div class="progress-bar-container">
         <div id="quiz-progress" class="progress-bar-fill" style="width: 2%"></div>
       </div>
+
+      <!-- Question Navigation Bar -->
+      <div id="question-nav-bar" style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 4px;"></div>
 
       <!-- Question Text -->
       <div class="question-container">
@@ -158,7 +221,7 @@
       </div>
 
       <!-- AI Result Feedback Box (Initially hidden) -->
-      <div id="ai-result-box" class="ai-result-box hidden">
+      <div id="ai-result-box" class="ai-result-box hidden tex2jax_process">
         <div class="ai-score-row">
           <div class="ai-score-badge">
             <span class="ai-score-label">Оценка ИИ</span>
@@ -186,7 +249,7 @@
           <button id="toggle-academic-btn" class="btn secondary-btn small-btn">Показать эталонный ответ</button>
           <button id="override-correct-btn" class="btn secondary-btn small-btn hidden">✓ Засчитать как правильный</button>
         </div>
-        <div id="academic-answer-box" class="academic-answer-box hidden">
+        <div id="academic-answer-box" class="academic-answer-box hidden tex2jax_process">
           <h5>📚 Эталонный академический ответ:</h5>
           <p id="academic-answer-text">Текст ответа...</p>
         </div>
@@ -225,7 +288,9 @@
       <!-- Navigation Footer -->
       <div class="quiz-footer">
         <button id="quit-quiz-btn" class="btn secondary-btn">Прервать тест</button>
+        <button id="skip-q-btn" class="btn secondary-btn">Пропустить →</button>
         <button id="next-q-btn" class="btn primary-btn hidden">Дальше</button>
+        <button id="finish-quiz-btn" class="btn primary-btn hidden">✅ Завершить тест</button>
       </div>
     </section>
 
@@ -289,6 +354,7 @@
       <!-- Controls -->
       <div class="action-bar">
         <button id="retry-failed-btn" class="btn secondary-btn large-btn hidden">Работа над ошибками</button>
+        <button id="quiz-export-pdf-btn" class="btn primary-btn large-btn">📄 Скачать PDF</button>
         <button id="restart-quiz-btn" class="btn primary-btn large-btn">Пройти еще раз</button>
         <button id="home-btn" class="btn secondary-btn large-btn">На главную</button>
       </div>
