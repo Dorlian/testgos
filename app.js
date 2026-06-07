@@ -1668,8 +1668,7 @@ function sendResAiQuestion(panelId, questionId) {
   inputEl.disabled = true;
 
   const correctOption = q.options ? q.options[q.correctIndex ?? 0] : '';
-  const shortExplanation = (q.explanation || '').slice(0, 300);
-  const etalonContext = `Правильный ответ: ${correctOption}\n${shortExplanation}`;
+  const etalonContext = `Правильный ответ: ${correctOption}\n${q.explanation || ''}`;
 
   fetch('/api/check-answer', {
     method: 'POST',
@@ -2067,20 +2066,7 @@ function buildConstructorResult() {
     card.className = 'study-card';
     card.style.border = '1px solid rgba(167,139,250,0.25)';
 
-    // Build options list (if available)
-    let optionsHtml = '';
-    if (Array.isArray(q.options)) {
-      optionsHtml = '<div class="constr-options-list">' +
-        q.options.map((opt, i) => {
-          const isCorrect = i === (q.correctIndex ?? 0);
-          return `<div class="study-option${isCorrect ? ' correct' : ''}">
-            <span class="option-indicator">${String.fromCharCode(65 + i)}</span>
-            <span>${opt}</span>
-            ${isCorrect ? '<span style="margin-left:auto; color:var(--correct); font-weight:700;">✓</span>' : ''}
-          </div>`;
-        }).join('') +
-      '</div>';
-    }
+    const correctOptionText = Array.isArray(q.options) ? q.options[q.correctIndex ?? 0] : '';
 
     card.innerHTML = `
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
@@ -2090,10 +2076,17 @@ function buildConstructorResult() {
       <h3 class="tex2jax_process" style="font-size:1rem; font-weight:700; margin-bottom:14px; line-height:1.5;">
         ${q.question}
       </h3>
-      ${optionsHtml}
       <div class="study-explanation tex2jax_process" style="margin-top:12px;">
-        <strong style="color:var(--correct);">✓ Правильный ответ:</strong>
-        <p style="margin-top:6px;">${q.explanation ? markdownToHtml(q.explanation) : ''}</p>
+        <div style="margin-bottom: 12px; padding: 12px 16px; border-left: 4px solid var(--correct); background: rgba(16, 185, 129, 0.08); border-radius: 0 var(--radius-md) var(--radius-md) 0;">
+          <strong style="color:var(--correct); font-size:0.95rem;">Ответ:</strong>
+          <p style="margin-top:6px; font-weight:600; font-size:0.95rem; color:var(--text-main);">${correctOptionText}</p>
+        </div>
+        ${q.explanation ? `
+          <div style="margin-top:14px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 12px;">
+            <strong style="color:var(--primary); font-size:0.9rem;">📚 Подробный разбор и решение:</strong>
+            <div style="margin-top:8px; line-height:1.6; color:var(--text-secondary);">${markdownToHtml(q.explanation)}</div>
+          </div>
+        ` : ''}
       </div>
     `;
     // --- Ask AI panel ---
@@ -2145,18 +2138,7 @@ function exportConstructorToPDF() {
 
   let questionsHtml = '';
   selectedQuestions.forEach((q, idx) => {
-    let optionsHtml = '';
-    if (Array.isArray(q.options)) {
-      optionsHtml = q.options.map((opt, i) => {
-        const isCorrect = i === (q.correctIndex ?? 0);
-        return `<div class="opt ${isCorrect ? 'opt-correct' : ''}">
-          <span class="opt-letter">${String.fromCharCode(65 + i)}.</span>
-          <span class="opt-text">${opt}</span>
-          ${isCorrect ? '<span class="opt-check">✓</span>' : ''}
-        </div>`;
-      }).join('');
-    }
-
+    const correctOptionText = Array.isArray(q.options) ? q.options[q.correctIndex ?? 0] : '';
     const explanation = q.explanation ? markdownToHtml(q.explanation) : '';
 
     // Capture AI response from DOM if user asked a question
@@ -2181,10 +2163,15 @@ function exportConstructorToPDF() {
           <span class="q-cat">${catLabels[q.category] || q.category}</span>
         </div>
         <div class="q-text">${q.question}</div>
-        ${optionsHtml ? `<div class="q-options">${optionsHtml}</div>` : ''}
-        <div class="q-answer">
-          <strong>Правильный ответ:</strong>
-          <div class="q-explanation">${explanation}</div>
+        <div class="q-answer" style="margin-top: 10px;">
+          <strong style="color: #16a34a; font-size: 10pt;">Ответ:</strong>
+          <div style="margin-top: 4px; font-weight: 600; font-size: 10.5pt; color: #1f2937;">${correctOptionText}</div>
+          ${explanation ? `
+            <div style="margin-top: 12px; border-top: 1px dashed #ddd; padding-top: 10px;">
+              <strong style="color: #7c3aed; font-size: 9.5pt;">📚 Подробный разбор и решение:</strong>
+              <div class="q-explanation" style="margin-top: 4px;">${explanation}</div>
+            </div>
+          ` : ''}
         </div>
         ${aiHtml}
       </div>
