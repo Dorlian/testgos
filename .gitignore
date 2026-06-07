@@ -1,4 +1,32 @@
+# Dependencies (DO NOT commit - run npm install to restore)
+node_modules/
+package-lock.json
+
+# Scratch / temp files
+scratch/
+
 # IDE and editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# System files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary files
+*.tmp
+*.log
+
+# Environment variables
+.env
+
 .vscode/
 .idea/
 *.suo
